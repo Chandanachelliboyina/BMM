@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Building2, LayoutDashboard, User, CalendarCheck, ClipboardList, Activity, CalendarDays, BarChart3, Bell, Settings, LogOut } from "lucide-react";
+import { Building2, LayoutDashboard, User, CalendarCheck, ClipboardList, Activity, CalendarDays, BarChart3, Bell, Settings, LogOut, Home } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarFooter,
@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/sidebar";
 
 const items = [
+  { title: "Home", url: "/", icon: Home },
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "My Profile", url: "/profile", icon: User },
   { title: "Attendance", url: "/attendance", icon: CalendarCheck },

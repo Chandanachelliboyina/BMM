@@ -14,6 +14,99 @@ export type Database = {
   }
   public: {
     Tables: {
+      activities: {
+        Row: {
+          id: string
+          user_id: string
+          created_at: string
+          date: string
+          villages_visited: number | null
+          meetings_conducted: string | null
+          remarks: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          created_at?: string
+          date: string
+          villages_visited?: number | null
+          meetings_conducted?: string | null
+          remarks?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          created_at?: string
+          date?: string
+          villages_visited?: number | null
+          meetings_conducted?: string | null
+          remarks?: string | null
+        }
+        Relationships: []
+      }
+      reports: {
+        Row: {
+          id: string
+          user_id: string
+          created_at: string
+          date: string
+          report_type: string
+          description: string | null
+          image_url_1: string | null
+          image_url_2: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          created_at?: string
+          date: string
+          report_type: string
+          description?: string | null
+          image_url_1?: string | null
+          image_url_2?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          created_at?: string
+          date?: string
+          report_type?: string
+          description?: string | null
+          image_url_1?: string | null
+          image_url_2?: string | null
+        }
+        Relationships: []
+      }
+      leaves: {
+        Row: {
+          id: string
+          user_id: string
+          created_at: string
+          leave_date: string
+          leave_type: string
+          reason: string | null
+          status: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          created_at?: string
+          leave_date: string
+          leave_type: string
+          reason?: string | null
+          status?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          created_at?: string
+          leave_date?: string
+          leave_type?: string
+          reason?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
       attendance: {
         Row: {
           attendance_status: string

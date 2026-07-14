@@ -25,3 +25,13 @@ export async function getSignedUrl(bucket: string, path: string, expiresIn = 360
   const { data } = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn);
   return data?.signedUrl ?? null;
 }
+
+export async function uploadDailyUpdateImage(userId: string, file: File | Blob, index: number, ext = "jpg"): Promise<string> {
+  const path = `${userId}/update-${Date.now()}-${index}.${ext}`;
+  const { error } = await supabase.storage.from("daily-updates").upload(path, file, {
+    contentType: file.type || "image/jpeg",
+    upsert: false,
+  });
+  if (error) throw error;
+  return path;
+}

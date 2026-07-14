@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { Camera, CheckCircle2, Loader2, RefreshCw, LogOut, Building2 } from "lucide-react";
+import { Camera, CheckCircle2, Loader2, RefreshCw, LogOut, Building2, MapPin } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmployee } from "@/hooks/useEmployee";
 import { uploadSelfie } from "@/lib/storage";
@@ -10,8 +10,11 @@ import { compareFaces, loadFaceModels } from "@/lib/face-recognition";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { GoogleMapEmbed } from "@/components/GoogleMapEmbed";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+
+type Location = { lat: number; lng: number; address?: string };
 
 export const Route = createFileRoute("/_authenticated/logout")({
   head: () => ({ meta: [{ title: "Logout Attendance — Bheemabhai Mahila Mandali (BMM)" }] }),
@@ -26,6 +29,8 @@ function LogoutAttendancePage() {
   const streamRef = useRef<MediaStream | null>(null);
   const [selfieBlob, setSelfieBlob] = useState<Blob | null>(null);
   const [selfieUrl, setSelfieUrl] = useState<string | null>(null);
+  const [location, setLocation] = useState<Location | null>(null);
+  const [locError, setLocError] = useState<string | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -62,6 +67,34 @@ function LogoutAttendancePage() {
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
+  const captureLocation = useCallback(() => {
+    setLocError(null);
+    if (!navigator.geolocation) {
+      setLocError("Geolocation not supported");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        let address: string | undefined;
+        try {
+          const key = import.meta.env.VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY;
+          const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${key}`);
+          if (r.ok) {
+            const j = await r.json();
+            address = j?.results?.[0]?.formatted_address;
+          }
+        } catch { /* ignore */ }
+        setLocation({ lat, lng, address });
+      },
+      (err) => setLocError(err.message || "Unable to get location"),
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
+  }, []);
+
+  useEffect(() => { captureLocation(); }, [captureLocation]);
+
   const capture = () => {
     const video = videoRef.current;
     if (!video) return;
@@ -92,6 +125,10 @@ function LogoutAttendancePage() {
       toast.error("Please capture your logout selfie");
       return;
     }
+    if (!location) {
+      toast.error("Waiting for location — allow location access");
+      return;
+    }
     
     setVerifying(true);
     
@@ -120,10 +157,16 @@ function LogoutAttendancePage() {
     try {
       const path = await uploadSelfie(employee.user_id, selfieBlob);
       const today = format(new Date(), "yyyy-MM-dd");
-      // Update today's attendance row with logout time + selfie
+      // Update today's attendance row with logout time + selfie + location
       const { error } = await supabase
         .from("attendance")
-        .update({ logout_time: new Date().toISOString(), logout_selfie: path } as never)
+        .update({ 
+          logout_time: new Date().toISOString(), 
+          logout_selfie: path,
+          logout_gps_latitude: location.lat,
+          logout_gps_longitude: location.lng,
+          logout_full_address: location.address ?? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`
+        } as never)
         .eq("user_id", employee.user_id)
         .eq("login_date", today);
       if (error) console.warn("Logout attendance update failed:", error.message);
@@ -197,9 +240,23 @@ function LogoutAttendancePage() {
             <Camera className="w-5 h-5 text-primary" />
             <h3 className="font-semibold">Logout Selfie</h3>
           </div>
-          <p className="text-xs text-muted-foreground mb-3">
+          <p className="text-sm text-muted-foreground mb-4">
             Take a selfie to record your logout time. It will be compared with your profile photo.
           </p>
+          
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 mb-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground">Signing out as</p>
+              <p className="font-semibold text-primary">{employee.full_name}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground">Location</p>
+              <p className="font-medium text-sm max-w-[200px] truncate" title={location?.address || "Fetching..."}>
+                {location?.address || "Fetching..."}
+              </p>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-1.5 text-center">Profile photo</p>
@@ -243,13 +300,32 @@ function LogoutAttendancePage() {
           </div>
         </Card>
 
+        <Card className="p-5 shadow-card">
+          <div className="flex items-center gap-2 mb-4">
+            <MapPin className="w-5 h-5 text-primary" />
+            <h3 className="font-semibold">Live Location</h3>
+          </div>
+          {location ? (
+            <GoogleMapEmbed latitude={location.lat} longitude={location.lng} />
+          ) : (
+            <div className="h-[240px] rounded-lg border bg-muted flex items-center justify-center text-sm text-muted-foreground">
+              {locError ?? "Fetching your location…"}
+            </div>
+          )}
+          <div className="mt-4 flex gap-2 justify-end">
+            <Button variant="outline" size="sm" onClick={captureLocation}>
+              <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh location
+            </Button>
+          </div>
+        </Card>
+
         <div className="flex justify-between gap-3">
           <Button variant="ghost" onClick={skip} disabled={submitting || verifying}>
             Skip & sign out
           </Button>
           <Button
             onClick={submitLogout}
-            disabled={submitting || verifying || !selfieBlob}
+            disabled={submitting || verifying || !selfieBlob || !location}
             className="h-12 px-8 bg-gradient-primary shadow-elegant"
           >
             {submitting || verifying ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <LogOut className="w-4 h-4 mr-2" />} 

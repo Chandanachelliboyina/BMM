@@ -267,9 +267,23 @@ function AttendancePage() {
                 <Camera className="w-5 h-5 text-primary" />
                 <h3 className="font-semibold">Selfie Face Verification</h3>
               </div>
-              <p className="text-xs text-muted-foreground mb-3">
-                Signed in as <span className="font-medium text-foreground">{employee.full_name}</span>. Match your live selfie with your profile photo.
+              <p className="text-sm text-muted-foreground mb-4">
+                Please ensure your face is clearly visible to verify your identity.
               </p>
+              
+              <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 mb-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground">Signing in as</p>
+                  <p className="font-semibold text-primary">{employee.full_name}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Location</p>
+                  <p className="font-medium text-sm max-w-[200px] truncate" title={location?.address || "Fetching..."}>
+                    {location?.address || "Fetching..."}
+                  </p>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-1.5 text-center">Profile photo</p>

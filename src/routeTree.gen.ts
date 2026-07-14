@@ -13,6 +13,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRegisterRouteImport } from './routes/auth.register'
 import { Route as AuthLoginRouteImport } from './routes/auth.login'
+import { Route as AuthenticatedUpdatesRouteImport } from './routes/_authenticated/updates'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedLogoutRouteImport } from './routes/_authenticated/logout'
 import { Route as AuthenticatedHistoryRouteImport } from './routes/_authenticated/history'
@@ -37,6 +38,11 @@ const AuthLoginRoute = AuthLoginRouteImport.update({
   id: '/auth/login',
   path: '/auth/login',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedUpdatesRoute = AuthenticatedUpdatesRouteImport.update({
+  id: '/updates',
+  path: '/updates',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   id: '/profile',
@@ -71,6 +77,7 @@ export interface FileRoutesByFullPath {
   '/history': typeof AuthenticatedHistoryRoute
   '/logout': typeof AuthenticatedLogoutRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/updates': typeof AuthenticatedUpdatesRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/register': typeof AuthRegisterRoute
 }
@@ -81,6 +88,7 @@ export interface FileRoutesByTo {
   '/history': typeof AuthenticatedHistoryRoute
   '/logout': typeof AuthenticatedLogoutRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/updates': typeof AuthenticatedUpdatesRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/register': typeof AuthRegisterRoute
 }
@@ -93,6 +101,7 @@ export interface FileRoutesById {
   '/_authenticated/history': typeof AuthenticatedHistoryRoute
   '/_authenticated/logout': typeof AuthenticatedLogoutRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
+  '/_authenticated/updates': typeof AuthenticatedUpdatesRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/register': typeof AuthRegisterRoute
 }
@@ -105,6 +114,7 @@ export interface FileRouteTypes {
     | '/history'
     | '/logout'
     | '/profile'
+    | '/updates'
     | '/auth/login'
     | '/auth/register'
   fileRoutesByTo: FileRoutesByTo
@@ -115,6 +125,7 @@ export interface FileRouteTypes {
     | '/history'
     | '/logout'
     | '/profile'
+    | '/updates'
     | '/auth/login'
     | '/auth/register'
   id:
@@ -126,6 +137,7 @@ export interface FileRouteTypes {
     | '/_authenticated/history'
     | '/_authenticated/logout'
     | '/_authenticated/profile'
+    | '/_authenticated/updates'
     | '/auth/login'
     | '/auth/register'
   fileRoutesById: FileRoutesById
@@ -166,6 +178,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/auth/login'
       preLoaderRoute: typeof AuthLoginRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/updates': {
+      id: '/_authenticated/updates'
+      path: '/updates'
+      fullPath: '/updates'
+      preLoaderRoute: typeof AuthenticatedUpdatesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/profile': {
       id: '/_authenticated/profile'
@@ -211,6 +230,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedHistoryRoute: typeof AuthenticatedHistoryRoute
   AuthenticatedLogoutRoute: typeof AuthenticatedLogoutRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
+  AuthenticatedUpdatesRoute: typeof AuthenticatedUpdatesRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -219,6 +239,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedHistoryRoute: AuthenticatedHistoryRoute,
   AuthenticatedLogoutRoute: AuthenticatedLogoutRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
+  AuthenticatedUpdatesRoute: AuthenticatedUpdatesRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

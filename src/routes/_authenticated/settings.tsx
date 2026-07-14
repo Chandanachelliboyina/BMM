@@ -55,18 +55,18 @@ function SettingsPage() {
         <div className="grid md:grid-cols-3 gap-6">
           {/* Left Column: Navigation/Sections */}
           <div className="md:col-span-1 space-y-2">
-            <Card className="overflow-hidden">
+            <Card className="overflow-hidden sticky top-24">
               <div className="p-1 flex flex-col">
-                <Button variant="ghost" className="justify-start px-4 h-12 bg-primary/10 text-primary font-semibold">
-                  <Shield className="w-4 h-4 mr-3" /> Security
+                <Button variant="ghost" onClick={() => document.getElementById('appearance')?.scrollIntoView({behavior: 'smooth'})} className="justify-start px-4 h-12 text-muted-foreground hover:text-foreground">
+                  <Monitor className="w-4 h-4 mr-3" /> Appearance
                   <ChevronRight className="w-4 h-4 ml-auto opacity-50" />
                 </Button>
-                <Button variant="ghost" className="justify-start px-4 h-12 text-muted-foreground hover:text-foreground">
+                <Button variant="ghost" onClick={() => document.getElementById('notifications')?.scrollIntoView({behavior: 'smooth'})} className="justify-start px-4 h-12 text-muted-foreground hover:text-foreground">
                   <Bell className="w-4 h-4 mr-3" /> Notifications
                   <ChevronRight className="w-4 h-4 ml-auto opacity-50" />
                 </Button>
-                <Button variant="ghost" className="justify-start px-4 h-12 text-muted-foreground hover:text-foreground">
-                  <HelpCircle className="w-4 h-4 mr-3" /> Support
+                <Button variant="ghost" onClick={() => document.getElementById('security')?.scrollIntoView({behavior: 'smooth'})} className="justify-start px-4 h-12 text-muted-foreground hover:text-foreground">
+                  <Shield className="w-4 h-4 mr-3" /> Security
                   <ChevronRight className="w-4 h-4 ml-auto opacity-50" />
                 </Button>
               </div>
@@ -74,10 +74,10 @@ function SettingsPage() {
           </div>
 
           {/* Right Column: Content */}
-          <div className="md:col-span-2 space-y-6">
+          <div className="md:col-span-2 space-y-6 pb-20">
             
             {/* Preferences */}
-            <Card className="p-6 shadow-card">
+            <Card id="appearance" className="p-6 shadow-card scroll-mt-24">
               <h3 className="text-lg font-semibold mb-4">Appearance</h3>
               <div className="flex items-center gap-4">
                 <button 
@@ -105,7 +105,7 @@ function SettingsPage() {
             </Card>
 
             {/* Notifications */}
-            <Card className="p-6 shadow-card space-y-6">
+            <Card id="notifications" className="p-6 shadow-card space-y-6 scroll-mt-24">
               <div>
                 <h3 className="text-lg font-semibold mb-1">Notification Preferences</h3>
                 <p className="text-sm text-muted-foreground mb-6">Choose how you want to be notified about updates.</p>
@@ -129,7 +129,7 @@ function SettingsPage() {
             </Card>
 
             {/* Security */}
-            <Card className="p-6 shadow-card border-l-4 border-l-primary">
+            <Card id="security" className="p-6 shadow-card border-l-4 border-l-primary scroll-mt-24">
               <h3 className="text-lg font-semibold mb-1">Security Settings</h3>
               <p className="text-sm text-muted-foreground mb-4">Manage your password and account security.</p>
               

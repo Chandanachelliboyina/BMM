@@ -24,7 +24,11 @@ function ProfilePage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [form, setForm] = useState({ email: "", mobile_number: "", address: "", village: "" });
+  const [form, setForm] = useState({ 
+    email: "", mobile_number: "", address: "", village: "",
+    head: "", donor_name: "", department: "", 
+    target_villages: "", target_mandals: "", targets: "" 
+  });
 
   useEffect(() => {
     if (employee) {
@@ -33,6 +37,12 @@ function ProfilePage() {
         mobile_number: employee.mobile_number,
         address: employee.address ?? "",
         village: employee.village ?? "",
+        head: employee.head ?? "",
+        donor_name: employee.donor_name ?? "",
+        department: employee.department ?? "",
+        target_villages: employee.target_villages ?? "",
+        target_mandals: employee.target_mandals ?? "",
+        targets: employee.targets ?? "",
       });
     }
   }, [employee]);
@@ -45,6 +55,12 @@ function ProfilePage() {
       mobile_number: form.mobile_number.trim(),
       address: form.address || null,
       village: form.village || null,
+      head: form.head || null,
+      donor_name: form.donor_name || null,
+      department: form.department || null,
+      target_villages: form.target_villages || null,
+      target_mandals: form.target_mandals || null,
+      targets: form.targets || null,
     }).eq("user_id", employee.user_id);
     setSaving(false);
     if (error) toast.error(error.message);
@@ -62,6 +78,12 @@ function ProfilePage() {
         mobile_number: employee.mobile_number,
         address: employee.address ?? "",
         village: employee.village ?? "",
+        head: employee.head ?? "",
+        donor_name: employee.donor_name ?? "",
+        department: employee.department ?? "",
+        target_villages: employee.target_villages ?? "",
+        target_mandals: employee.target_mandals ?? "",
+        targets: employee.targets ?? "",
       });
     }
     setIsEditing(false);
@@ -111,9 +133,8 @@ function ProfilePage() {
             </div>
             <div className="mt-6 space-y-3 text-sm text-left">
               <Row icon={IdCard} label="Employee ID (locked)" value={employee.employee_id} />
-              <Row icon={Briefcase} label="Role (locked)" value={employee.role} />
-              <Row icon={Building2} label="Department" value={employee.department ?? "—"} />
-              <Row icon={MapPin} label="Office" value={employee.office_location ?? "—"} />
+              <Row icon={Briefcase} label="Position (locked)" value={employee.role} />
+              <Row icon={Building2} label="Office" value={employee.office_location ?? "—"} />
             </div>
           </Card>
 
@@ -162,6 +183,34 @@ function ProfilePage() {
                 ) : (
                   <p className="font-medium bg-muted/30 p-3 rounded-md border whitespace-pre-wrap min-h-[80px]">{form.address || "—"}</p>
                 )}
+              </div>
+            </div>
+
+            <div className="mt-8 pt-6 border-t grid sm:grid-cols-2 gap-6">
+              <h3 className="font-semibold text-lg sm:col-span-2">Work Information</h3>
+              <div className="space-y-1.5">
+                <Label>Head</Label>
+                {isEditing ? <Input value={form.head} onChange={(e) => setForm({ ...form, head: e.target.value })} /> : <p className="font-medium bg-muted/30 p-2.5 rounded-md border">{form.head || "—"}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label>Donor Name</Label>
+                {isEditing ? <Input value={form.donor_name} onChange={(e) => setForm({ ...form, donor_name: e.target.value })} /> : <p className="font-medium bg-muted/30 p-2.5 rounded-md border">{form.donor_name || "—"}</p>}
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Department</Label>
+                {isEditing ? <Input value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} /> : <p className="font-medium bg-muted/30 p-2.5 rounded-md border">{form.department || "—"}</p>}
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Target Villages</Label>
+                {isEditing ? <Textarea value={form.target_villages} onChange={(e) => setForm({ ...form, target_villages: e.target.value })} /> : <p className="font-medium bg-muted/30 p-2.5 rounded-md border">{form.target_villages || "—"}</p>}
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Target Mandals</Label>
+                {isEditing ? <Textarea value={form.target_mandals} onChange={(e) => setForm({ ...form, target_mandals: e.target.value })} /> : <p className="font-medium bg-muted/30 p-2.5 rounded-md border">{form.target_mandals || "—"}</p>}
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Targets</Label>
+                {isEditing ? <Textarea value={form.targets} onChange={(e) => setForm({ ...form, targets: e.target.value })} /> : <p className="font-medium bg-muted/30 p-2.5 rounded-md border">{form.targets || "—"}</p>}
               </div>
             </div>
 

@@ -88,6 +88,11 @@ export type Database = {
           profile_photo: string | null
           role: string
           state: string | null
+          donor_name: string | null
+          head: string | null
+          target_mandals: string | null
+          target_villages: string | null
+          targets: string | null
           updated_at: string
           user_id: string
           village: string | null
@@ -111,6 +116,11 @@ export type Database = {
           profile_photo?: string | null
           role: string
           state?: string | null
+          donor_name?: string | null
+          head?: string | null
+          target_mandals?: string | null
+          target_villages?: string | null
+          targets?: string | null
           updated_at?: string
           user_id: string
           village?: string | null
@@ -134,6 +144,11 @@ export type Database = {
           profile_photo?: string | null
           role?: string
           state?: string | null
+          donor_name?: string | null
+          head?: string | null
+          target_mandals?: string | null
+          target_villages?: string | null
+          targets?: string | null
           updated_at?: string
           user_id?: string
           village?: string | null

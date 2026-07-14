@@ -38,9 +38,15 @@ const schema = z.object({
   pin_code: z.string().trim().regex(/^\d{6}$/, "Enter a valid 6-digit PIN").optional().or(z.literal("")),
   gender: z.string().optional().or(z.literal("")),
   date_of_birth: z.string().optional().or(z.literal("")),
-  role: z.string().min(1, "Role required"),
+  role: z.string().min(1, "Position required"),
   employee_id: z.string().trim().regex(/^[A-Za-z0-9]+$/, "Employee ID must contain only letters and numbers").min(3, "Employee ID must be at least 3 characters").max(20),
   office_location: z.string().trim().max(150).optional().or(z.literal("")),
+  head: z.string().optional().or(z.literal("")),
+  donor_name: z.string().optional().or(z.literal("")),
+  department: z.string().optional().or(z.literal("")),
+  target_villages: z.string().optional().or(z.literal("")),
+  target_mandals: z.string().optional().or(z.literal("")),
+  targets: z.string().optional().or(z.literal("")),
 }).refine((d) => d.password === d.confirm_password, {
   message: "Passwords do not match", path: ["confirm_password"],
 });
@@ -57,6 +63,8 @@ function RegisterPage() {
     address: "", village: "", mandal: "", district: "", state: "", pin_code: "",
     gender: "", date_of_birth: "",
     role: "", employee_id: "", office_location: "",
+    head: "", donor_name: "", department: "",
+    target_villages: "", target_mandals: "", targets: "",
   });
 
   const set = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -120,6 +128,12 @@ function RegisterPage() {
         date_of_birth: form.date_of_birth || null,
         role: form.role,
         office_location: form.office_location || null,
+        head: form.head || null,
+        donor_name: form.donor_name || null,
+        department: form.department || null,
+        target_villages: form.target_villages || null,
+        target_mandals: form.target_mandals || null,
+        targets: form.targets || null,
         profile_photo: photoPath,
       }).select("employee_id").single();
 
@@ -229,16 +243,22 @@ function RegisterPage() {
             <section>
               <h2 className="font-semibold text-lg mb-4 pb-2 border-b">Employment Information</h2>
               <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="Role *">
+                <Field label="Position *">
                   <Select value={form.role} onValueChange={set("role")}>
-                    <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Select position" /></SelectTrigger>
                     <SelectContent>
                       {ROLES.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </Field>
                 <Field label="Employee ID *"><Input required value={form.employee_id} placeholder="e.g. NGO001" maxLength={20} onChange={(e) => set("employee_id")(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase())} /></Field>
+                <Field label="Department"><Input value={form.department} onChange={(e) => set("department")(e.target.value)} /></Field>
                 <Field label="NGO Office Location"><Input value={form.office_location} onChange={(e) => set("office_location")(e.target.value)} /></Field>
+                <Field label="Head"><Input value={form.head} onChange={(e) => set("head")(e.target.value)} /></Field>
+                <Field label="Donor Name"><Input value={form.donor_name} onChange={(e) => set("donor_name")(e.target.value)} /></Field>
+                <Field label="Target Villages" className="sm:col-span-2"><Textarea rows={2} value={form.target_villages} onChange={(e) => set("target_villages")(e.target.value)} /></Field>
+                <Field label="Target Mandals" className="sm:col-span-2"><Textarea rows={2} value={form.target_mandals} onChange={(e) => set("target_mandals")(e.target.value)} /></Field>
+                <Field label="Targets" className="sm:col-span-2"><Textarea rows={2} value={form.targets} onChange={(e) => set("targets")(e.target.value)} /></Field>
               </div>
             </section>
 

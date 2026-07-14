@@ -47,12 +47,10 @@ function HomePage() {
           </div>
         </div>
         
-        <CardContent className="p-6 md:p-8">
-          <div className="flex flex-col lg:flex-row gap-8">
-            <div className="flex-1 space-y-6 text-base leading-relaxed text-muted-foreground">
-              <p>
-                Bheemabhai Mahila Mandali (BMM) is a secular, non-profit, and women development voluntary organization, founded by Mrs. Vasamsetti Nandivardhana in the year 1995 and registered on 7th September 1995 with a determination to strengthen the women and also alleviate poverty in her motherland. It is registered both under the A.P of Societies Act and the Foreign Contribution Regulation Act. BMM is a well-known Voluntary Organization in Kakinada District and it works for women rights and empowerment aimed at gender justice. It has been striving for the Economic development of the women of the down-trodden and weaker sections of the society called "Dalit Bahujan Communities" more than Three decades of Tallarevu, Karapa, Kajuluru and Kakinada Rural Mandals and Ramachandrapuram Mandals.
-              </p>
+        <CardContent className="p-6 md:p-8 space-y-6 text-base leading-relaxed text-muted-foreground">
+          <p>
+            Bheemabhai Mahila Mandali (BMM) is a secular, non-profit, and women development voluntary organization, founded by Mrs. Vasamsetti Nandivardhana in the year 1995 and registered on 7th September 1995 with a determination to strengthen the women and also alleviate poverty in her motherland. It is registered both under the A.P of Societies Act and the Foreign Contribution Regulation Act. BMM is a well-known Voluntary Organization in Kakinada District and it works for women rights and empowerment aimed at gender justice. It has been striving for the Economic development of the women of the down-trodden and weaker sections of the society called "Dalit Bahujan Communities" more than Three decades of Tallarevu, Karapa, Kajuluru and Kakinada Rural Mandals and Ramachandrapuram Mandals.
+          </p>
 
           <p>
             Regarding Health activities, the organization has organized Free Medical Camps, and provide better health services to the women, children and needy people in the community. 'Nutritious food' is supplied to the children of poor families. Legal Aid and family counseling is being provided up by the BMM to protect the women from Atrocities by their family members.
@@ -66,18 +64,9 @@ function HomePage() {
             Empowerment of Dalit Bahujan Women is the main objective of this organization which has been stepping to wards achievement by organizing skill development programs to the poor and needy women in tailoring and handicrafts at Tallarevu village with the support of Nehru Yuva Kendra under Ministry of Youth affairs of Indian Government. Formation of Self Help Groups is another strong strategy in promoting confidential levels among dalit bahujan women to lead a better and dignified life in the society.
           </p>
 
-              <p>
-                On humanitarian grounds the Welfare of older people has been taken up and to fulfill this objective, day care centre for the older people is being run with the small contributions collected from the local philanthropists. BMM never tolerates social injustice and always struggles for the social equality and justice of the people in distress. BMM's services gained recognition and appreciation from all sects of the target area and given a wider publicity in the newspapers. BMM has also conducted legal literacy camps and provided legal aid for Dalit Bahujan Communities.
-              </p>
-            </div>
-            <div className="w-full lg:w-1/3 shrink-0 mt-6 lg:mt-0">
-              <img 
-                src="/BMM_H.jpg" 
-                alt="BMM Community" 
-                className="w-full h-auto rounded-lg shadow-sm object-cover" 
-              />
-            </div>
-          </div>
+          <p>
+            On humanitarian grounds the Welfare of older people has been taken up and to fulfill this objective, day care centre for the older people is being run with the small contributions collected from the local philanthropists. BMM never tolerates social injustice and always struggles for the social equality and justice of the people in distress. BMM's services gained recognition and appreciation from all sects of the target area and given a wider publicity in the newspapers. BMM has also conducted legal literacy camps and provided legal aid for Dalit Bahujan Communities.
+          </p>
         </CardContent>
       </Card>
     </div>

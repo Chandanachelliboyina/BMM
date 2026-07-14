@@ -36,7 +36,7 @@ export function AppSidebar() {
       <SidebarHeader className="border-b">
         <div className="flex items-center gap-2 px-2 py-3">
           <div className="w-10 h-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shrink-0 shadow-sm overflow-hidden p-0.5">
-            <img src="/logo.png" alt="BMM Logo" className="w-full h-full object-cover rounded-lg" />
+            <img src="/BMM_LOGO.jpg" alt="BMM Logo" className="w-full h-full object-cover rounded-lg" />
           </div>
           {!collapsed && (
             <div className="flex-1 overflow-hidden">

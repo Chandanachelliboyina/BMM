@@ -63,7 +63,7 @@ function LoginPage() {
       <div className="hidden lg:flex flex-col justify-between p-12 bg-gradient-hero text-primary-foreground">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-white/90 shadow-sm flex items-center justify-center overflow-hidden p-0.5">
-            <img src="/logo.png" alt="BMM Logo" className="w-full h-full object-cover rounded-lg" />
+            <img src="/BMM_LOGO.jpg" alt="BMM Logo" className="w-full h-full object-cover rounded-lg" />
           </div>
           <span className="text-xl font-semibold tracking-tight">Bheemabhai Mahila Mandali (BMM)</span>
         </div>
@@ -79,7 +79,7 @@ function LoginPage() {
       <div className="flex items-center justify-center p-6 sm:p-12 bg-background">
         <div className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-2 mb-8 text-primary">
-            <img src="/logo.png" alt="BMM Logo" className="w-8 h-8 object-cover rounded-md shadow-sm" />
+            <img src="/BMM_LOGO.jpg" alt="BMM Logo" className="w-8 h-8 object-cover rounded-md shadow-sm" />
             <span className="font-semibold text-lg">Bheemabhai Mahila Mandali (BMM)</span>
           </div>
           <h2 className="text-3xl font-bold tracking-tight">Welcome back</h2>

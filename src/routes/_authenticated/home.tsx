@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Card, CardContent } from "@/components/ui/card";
 import { AppShell } from "@/components/AppShell";
@@ -6,17 +7,36 @@ export const Route = createFileRoute("/_authenticated/home")({
   component: HomePage,
 });
 
+const SLIDES = [
+  "/BMM_IMAGE.webp",
+  "/BMM_H.jpg"
+];
+
 function HomePage() {
+  const [currentSlide, setCurrentSlide] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % SLIDES.length);
+    }, 4000); // Change image every 4 seconds
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <AppShell title="Home">
       <div className="flex-1 space-y-6 p-4 md:p-8 pt-6 max-w-5xl mx-auto">
         <Card className="overflow-hidden border-none shadow-md">
         <div className="relative w-full h-64 md:h-96">
-          <img
-            src="/BMM_IMAGE.webp"
-            alt="BMM Activities"
-            className="w-full h-full object-cover"
-          />
+          {SLIDES.map((src, index) => (
+            <img
+              key={src}
+              src={src}
+              alt={`BMM Activity ${index + 1}`}
+              className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ease-in-out ${
+                index === currentSlide ? "opacity-100" : "opacity-0"
+              }`}
+            />
+          ))}
           <div className="absolute inset-0 bg-black/40 flex items-end">
             <div className="p-6 text-white w-full">
               <h1 className="text-2xl md:text-4xl font-bold mb-2">Bheemabhai Mahila Mandali (BMM)</h1>

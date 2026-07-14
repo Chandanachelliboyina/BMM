@@ -1,0 +1,333 @@
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { format } from "date-fns";
+import { Camera, MapPin, Clock, CheckCircle2, Loader2, RefreshCw, Building2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useEmployee } from "@/hooks/useEmployee";
+import { uploadSelfie, getSignedUrl } from "@/lib/storage";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { GoogleMapEmbed } from "@/components/GoogleMapEmbed";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+
+export const Route = createFileRoute("/_authenticated/attendance")({
+  head: () => ({ meta: [{ title: "Attendance Verification — Bheemabhai Mahila Mandali (BMM)" }] }),
+  component: AttendancePage,
+});
+
+type Location = { lat: number; lng: number; address?: string };
+
+function AttendancePage() {
+  const navigate = useNavigate();
+  const { employee, photoUrl, loading } = useEmployee();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [selfieBlob, setSelfieBlob] = useState<Blob | null>(null);
+  const [selfieUrl, setSelfieUrl] = useState<string | null>(null);
+  const [location, setLocation] = useState<Location | null>(null);
+  const [locError, setLocError] = useState<string | null>(null);
+  const [now, setNow] = useState(new Date());
+  const [cameraOn, setCameraOn] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [alreadyMarked, setAlreadyMarked] = useState<{ time: string; selfie: string | null } | null>(null);
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Check if today's attendance already exists
+  useEffect(() => {
+    if (!employee) return;
+    (async () => {
+      const today = format(new Date(), "yyyy-MM-dd");
+      const { data } = await supabase
+        .from("attendance")
+        .select("login_time, selfie_image")
+        .eq("user_id", employee.user_id)
+        .eq("login_date", today)
+        .maybeSingle();
+      if (data) {
+        const signed = data.selfie_image ? await getSignedUrl("attendance-selfies", data.selfie_image) : null;
+        setAlreadyMarked({ time: data.login_time, selfie: signed });
+      }
+    })();
+  }, [employee]);
+
+  const startCamera = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: 640, height: 480 }, audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setCameraOn(true);
+    } catch (err) {
+      toast.error("Camera access denied. Please allow camera to mark attendance.");
+      console.error(err);
+    }
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCameraOn(false);
+  }, []);
+
+  useEffect(() => () => stopCamera(), [stopCamera]);
+
+  const captureSelfie = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    // mirror
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      setSelfieBlob(blob);
+      setSelfieUrl(URL.createObjectURL(blob));
+      stopCamera();
+    }, "image/jpeg", 0.85);
+  };
+
+  const retakeSelfie = () => {
+    setSelfieBlob(null);
+    setSelfieUrl(null);
+    startCamera();
+  };
+
+  const captureLocation = useCallback(() => {
+    setLocError(null);
+    if (!navigator.geolocation) {
+      setLocError("Geolocation not supported");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        let address: string | undefined;
+        try {
+          const key = import.meta.env.VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY;
+          // Reverse geocoding via public URL — falls back gracefully if the key
+          // doesn't allow it. The map itself always renders via embed.
+          const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${key}`);
+          if (r.ok) {
+            const j = await r.json();
+            address = j?.results?.[0]?.formatted_address;
+          }
+        } catch { /* ignore */ }
+        setLocation({ lat, lng, address });
+      },
+      (err) => {
+        setLocError(err.message || "Unable to get location");
+      },
+      { enableHighAccuracy: true, timeout: 15000 },
+    );
+  }, []);
+
+  useEffect(() => { captureLocation(); }, [captureLocation]);
+
+  const submit = async () => {
+    if (!employee) return;
+    if (!selfieBlob) { toast.error("Please capture your selfie"); return; }
+    if (!location) { toast.error("Waiting for location — allow location access"); return; }
+    setSubmitting(true);
+    try {
+      const selfiePath = await uploadSelfie(employee.user_id, selfieBlob);
+      const { error } = await supabase.from("attendance").insert({
+        user_id: employee.user_id,
+        employee_id: employee.employee_id,
+        employee_name: employee.full_name,
+        role: employee.role,
+        selfie_image: selfiePath,
+        gps_latitude: location.lat,
+        gps_longitude: location.lng,
+        full_address: location.address ?? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`,
+        attendance_status: "Present",
+      });
+      if (error) {
+        if (error.code === "23505") toast.error("Attendance already marked for today");
+        else toast.error(error.message);
+        return;
+      }
+      toast.success("Attendance marked successfully");
+      setTimeout(() => navigate({ to: "/dashboard" }), 700);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to mark attendance");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
+  }
+  if (!employee) {
+    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">No employee profile found.</div>;
+  }
+
+  return (
+    <div className="min-h-screen bg-secondary/30">
+      <header className="h-14 border-b bg-background/80 backdrop-blur flex items-center gap-3 px-4 sticky top-0 z-30">
+        <div className="w-8 h-8 rounded-md bg-gradient-primary flex items-center justify-center">
+          <Building2 className="w-4 h-4 text-primary-foreground" />
+        </div>
+        <h1 className="font-semibold">Attendance Verification</h1>
+        <Button variant="ghost" size="sm" className="ml-auto" onClick={() => navigate({ to: "/dashboard" })}>
+          Skip to dashboard
+        </Button>
+      </header>
+
+      <main className="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        <Card className="p-6 shadow-card">
+          <div className="flex flex-wrap items-center gap-4">
+            <Avatar className="w-16 h-16 border-2 border-primary/20">
+              {photoUrl && <AvatarImage src={photoUrl} alt={employee.full_name} />}
+              <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                {employee.full_name.split(" ").map((s) => s[0]).slice(0, 2).join("")}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="text-lg font-semibold">{employee.full_name}</p>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                <Badge variant="secondary" className="font-mono">{employee.employee_id}</Badge>
+                <Badge variant="outline">{employee.role}</Badge>
+              </div>
+            </div>
+            <div className="ml-auto text-right">
+              <p className="text-xs text-muted-foreground">Current time</p>
+              <p className="text-2xl font-bold tabular-nums">{format(now, "hh:mm:ss a")}</p>
+              <p className="text-xs text-muted-foreground">{format(now, "EEEE, dd MMM yyyy")}</p>
+            </div>
+          </div>
+        </Card>
+
+        {alreadyMarked ? (
+          <Card className="p-8 text-center shadow-card border-success/30 bg-success/5">
+            <CheckCircle2 className="w-14 h-14 text-success mx-auto" />
+            <h2 className="text-2xl font-bold mt-4">Attendance already marked today</h2>
+            <p className="text-muted-foreground mt-1">
+              Checked in at {format(new Date(alreadyMarked.time), "hh:mm a")}
+            </p>
+            {alreadyMarked.selfie && (
+              <img src={alreadyMarked.selfie} alt="Today's selfie" className="w-32 h-32 rounded-full mx-auto mt-6 object-cover border-2 border-success/30" />
+            )}
+            <Button className="mt-6 bg-gradient-primary" onClick={() => navigate({ to: "/dashboard" })}>
+              Continue to Dashboard
+            </Button>
+          </Card>
+        ) : (
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* Selfie */}
+            <Card className="p-5 shadow-card">
+              <div className="flex items-center gap-2 mb-4">
+                <Camera className="w-5 h-5 text-primary" />
+                <h3 className="font-semibold">Selfie Face Verification</h3>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">
+                Signed in as <span className="font-medium text-foreground">{employee.full_name}</span>. Match your live selfie with your profile photo.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1.5 text-center">Profile photo</p>
+                  <div className="aspect-square rounded-lg overflow-hidden bg-muted border-2 border-primary/20">
+                    {photoUrl ? (
+                      <img src={photoUrl} alt={employee.full_name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">No photo</div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1.5 text-center">Live selfie</p>
+                  <div className="aspect-square rounded-lg overflow-hidden bg-black/90 relative">
+                    {selfieUrl ? (
+                      <img src={selfieUrl} alt="Selfie" className="w-full h-full object-cover" />
+                    ) : (
+                      <video ref={videoRef} className="w-full h-full object-cover scale-x-[-1]" muted playsInline />
+                    )}
+                    {!cameraOn && !selfieUrl && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                        <Button size="sm" onClick={startCamera} className="bg-white text-black hover:bg-white/90">
+                          <Camera className="w-3.5 h-3.5 mr-1.5" /> Start
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 flex gap-2">
+                {!selfieUrl && cameraOn && (
+                  <Button onClick={captureSelfie} className="flex-1 bg-gradient-primary">
+                    <Camera className="w-4 h-4 mr-2" /> Capture selfie
+                  </Button>
+                )}
+                {selfieUrl && (
+                  <Button variant="outline" onClick={retakeSelfie} className="flex-1">
+                    <RefreshCw className="w-4 h-4 mr-2" /> Retake
+                  </Button>
+                )}
+              </div>
+            </Card>
+
+            {/* Location + time */}
+            <Card className="p-5 shadow-card">
+              <div className="flex items-center gap-2 mb-4">
+                <MapPin className="w-5 h-5 text-primary" />
+                <h3 className="font-semibold">Live Location</h3>
+              </div>
+              {location ? (
+                <GoogleMapEmbed latitude={location.lat} longitude={location.lng} />
+              ) : (
+                <div className="h-[240px] rounded-lg border bg-muted flex items-center justify-center text-sm text-muted-foreground">
+                  {locError ?? "Fetching your location…"}
+                </div>
+              )}
+              <div className="mt-4 space-y-2 text-sm">
+                {location && (
+                  <>
+                    <p className="text-muted-foreground">
+                      <span className="font-mono">{location.lat.toFixed(5)}, {location.lng.toFixed(5)}</span>
+                    </p>
+                    {location.address && <p className="text-foreground">{location.address}</p>}
+                  </>
+                )}
+                <Button variant="outline" size="sm" onClick={captureLocation}>
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh location
+                </Button>
+              </div>
+              <div className="mt-5 pt-5 border-t flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="w-4 h-4" />
+                Login will be recorded at {format(now, "hh:mm:ss a")} on {format(now, "dd MMM yyyy")}
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {!alreadyMarked && (
+          <div className="flex justify-end">
+            <Button
+              onClick={submit}
+              disabled={submitting || !selfieBlob || !location}
+              className="h-12 px-8 bg-gradient-primary shadow-elegant"
+            >
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <><CheckCircle2 className="w-4 h-4 mr-2" /> Mark Attendance</>}
+            </Button>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

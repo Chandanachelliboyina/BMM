@@ -1,0 +1,233 @@
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { format } from "date-fns";
+import { Camera, CheckCircle2, Loader2, RefreshCw, LogOut, Building2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useEmployee } from "@/hooks/useEmployee";
+import { uploadSelfie } from "@/lib/storage";
+import { useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+
+export const Route = createFileRoute("/_authenticated/attendance/logout")({
+  head: () => ({ meta: [{ title: "Logout Attendance — Bheemabhai Mahila Mandali (BMM)" }] }),
+  component: LogoutAttendancePage,
+});
+
+function LogoutAttendancePage() {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { employee, photoUrl, loading } = useEmployee();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [selfieBlob, setSelfieBlob] = useState<Blob | null>(null);
+  const [selfieUrl, setSelfieUrl] = useState<string | null>(null);
+  const [cameraOn, setCameraOn] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const startCamera = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: 640, height: 480 }, audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setCameraOn(true);
+    } catch (err) {
+      toast.error("Camera access denied. Please allow camera to log out.");
+      console.error(err);
+    }
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCameraOn(false);
+  }, []);
+
+  useEffect(() => () => stopCamera(), [stopCamera]);
+
+  const capture = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      setSelfieBlob(blob);
+      setSelfieUrl(URL.createObjectURL(blob));
+      stopCamera();
+    }, "image/jpeg", 0.85);
+  };
+
+  const retake = () => {
+    setSelfieBlob(null);
+    setSelfieUrl(null);
+    startCamera();
+  };
+
+  const submitLogout = async () => {
+    if (!employee || !selfieBlob) {
+      toast.error("Please capture your logout selfie");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const path = await uploadSelfie(employee.user_id, selfieBlob);
+      const today = format(new Date(), "yyyy-MM-dd");
+      // Update today's attendance row with logout time + selfie
+      const { error } = await supabase
+        .from("attendance")
+        .update({ logout_time: new Date().toISOString(), logout_selfie: path } as never)
+        .eq("user_id", employee.user_id)
+        .eq("login_date", today);
+      if (error) console.warn("Logout attendance update failed:", error.message);
+
+      toast.success("Logout attendance recorded");
+
+      // Full sign-out hygiene
+      await qc.cancelQueries();
+      qc.clear();
+      await supabase.auth.signOut();
+      navigate({ to: "/auth/login", replace: true });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to log out");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const skip = async () => {
+    await qc.cancelQueries();
+    qc.clear();
+    await supabase.auth.signOut();
+    navigate({ to: "/auth/login", replace: true });
+  };
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
+  }
+  if (!employee) {
+    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">No employee profile found.</div>;
+  }
+
+  return (
+    <div className="min-h-screen bg-secondary/30">
+      <header className="h-14 border-b bg-background/80 backdrop-blur flex items-center gap-3 px-4 sticky top-0 z-30">
+        <div className="w-8 h-8 rounded-md bg-gradient-primary flex items-center justify-center">
+          <Building2 className="w-4 h-4 text-primary-foreground" />
+        </div>
+        <h1 className="font-semibold">Logout Attendance</h1>
+        <Button variant="ghost" size="sm" className="ml-auto" onClick={() => navigate({ to: "/dashboard" })}>
+          Cancel
+        </Button>
+      </header>
+
+      <main className="max-w-3xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        <Card className="p-6 shadow-card">
+          <div className="flex flex-wrap items-center gap-4">
+            <Avatar className="w-16 h-16 border-2 border-primary/20">
+              {photoUrl && <AvatarImage src={photoUrl} alt={employee.full_name} />}
+              <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                {employee.full_name.split(" ").map((s) => s[0]).slice(0, 2).join("")}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="text-lg font-semibold">{employee.full_name}</p>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                <Badge variant="secondary" className="font-mono">{employee.employee_id}</Badge>
+                <Badge variant="outline">{employee.role}</Badge>
+              </div>
+            </div>
+            <div className="ml-auto text-right">
+              <p className="text-xs text-muted-foreground">Logout time</p>
+              <p className="text-2xl font-bold tabular-nums">{format(now, "hh:mm:ss a")}</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-5 shadow-card">
+          <div className="flex items-center gap-2 mb-4">
+            <Camera className="w-5 h-5 text-primary" />
+            <h3 className="font-semibold">Logout Selfie</h3>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            Take a selfie to record your logout time. It will be compared with your profile photo.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1.5 text-center">Profile photo</p>
+              <div className="aspect-square rounded-lg overflow-hidden bg-muted border-2 border-primary/20">
+                {photoUrl ? (
+                  <img src={photoUrl} alt={employee.full_name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">No photo</div>
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1.5 text-center">Logout selfie</p>
+              <div className="aspect-square rounded-lg overflow-hidden bg-black/90 relative">
+                {selfieUrl ? (
+                  <img src={selfieUrl} alt="Selfie" className="w-full h-full object-cover" />
+                ) : (
+                  <video ref={videoRef} className="w-full h-full object-cover scale-x-[-1]" muted playsInline />
+                )}
+                {!cameraOn && !selfieUrl && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                    <Button size="sm" onClick={startCamera} className="bg-white text-black hover:bg-white/90">
+                      <Camera className="w-3.5 h-3.5 mr-1.5" /> Start
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 flex gap-2">
+            {!selfieUrl && cameraOn && (
+              <Button onClick={capture} className="flex-1 bg-gradient-primary">
+                <Camera className="w-4 h-4 mr-2" /> Capture selfie
+              </Button>
+            )}
+            {selfieUrl && (
+              <Button variant="outline" onClick={retake} className="flex-1">
+                <RefreshCw className="w-4 h-4 mr-2" /> Retake
+              </Button>
+            )}
+          </div>
+        </Card>
+
+        <div className="flex justify-between gap-3">
+          <Button variant="ghost" onClick={skip} disabled={submitting}>
+            Skip & sign out
+          </Button>
+          <Button
+            onClick={submitLogout}
+            disabled={submitting || !selfieBlob}
+            className="h-12 px-8 bg-gradient-primary shadow-elegant"
+          >
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <><LogOut className="w-4 h-4 mr-2" /> Confirm Logout <CheckCircle2 className="w-4 h-4 ml-2" /></>}
+          </Button>
+        </div>
+      </main>
+    </div>
+  );
+}

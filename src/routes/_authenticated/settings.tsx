@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useTheme } from "@/components/ThemeProvider";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({ meta: [{ title: "Settings — BMM" }] }),
@@ -15,9 +16,9 @@ export const Route = createFileRoute("/_authenticated/settings")({
 });
 
 function SettingsPage() {
+  const { theme, setTheme } = useTheme();
   const [pushEnabled, setPushEnabled] = useState(true);
   const [emailEnabled, setEmailEnabled] = useState(true);
-  const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
   const [resetting, setResetting] = useState(false);
 
   const handlePasswordReset = async () => {

@@ -6,13 +6,14 @@ import { Camera, CheckCircle2, Loader2, RefreshCw, LogOut, Building2 } from "luc
 import { supabase } from "@/integrations/supabase/client";
 import { useEmployee } from "@/hooks/useEmployee";
 import { uploadSelfie } from "@/lib/storage";
+import { compareFaces, loadFaceModels } from "@/lib/face-recognition";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 
-export const Route = createFileRoute("/_authenticated/attendance/logout")({
+export const Route = createFileRoute("/_authenticated/logout")({
   head: () => ({ meta: [{ title: "Logout Attendance — Bheemabhai Mahila Mandali (BMM)" }] }),
   component: LogoutAttendancePage,
 });
@@ -27,10 +28,12 @@ function LogoutAttendancePage() {
   const [selfieUrl, setSelfieUrl] = useState<string | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
+    loadFaceModels().catch(console.error); // Preload models
     return () => clearInterval(t);
   }, []);
 
@@ -89,6 +92,30 @@ function LogoutAttendancePage() {
       toast.error("Please capture your logout selfie");
       return;
     }
+    
+    setVerifying(true);
+    
+    // 1. Face Verification
+    if (!photoUrl) {
+      toast.error("You don't have a profile photo. Please upload one in your profile first.");
+      setVerifying(false);
+      return;
+    }
+    
+    const capturedImg = new Image();
+    capturedImg.src = selfieUrl!;
+    await new Promise((res) => { capturedImg.onload = res; });
+    
+    const result = await compareFaces(capturedImg, photoUrl);
+    
+    if (!result.match) {
+      toast.error(result.error || `Face verification failed. Please try again. Distance: ${result.distance.toFixed(2)}`);
+      setVerifying(false);
+      return;
+    }
+    
+    toast.success(`Face matched! Processing logout...`);
+
     setSubmitting(true);
     try {
       const path = await uploadSelfie(employee.user_id, selfieBlob);
@@ -112,6 +139,7 @@ function LogoutAttendancePage() {
       toast.error(err instanceof Error ? err.message : "Failed to log out");
     } finally {
       setSubmitting(false);
+      setVerifying(false);
     }
   };
 
@@ -216,15 +244,17 @@ function LogoutAttendancePage() {
         </Card>
 
         <div className="flex justify-between gap-3">
-          <Button variant="ghost" onClick={skip} disabled={submitting}>
+          <Button variant="ghost" onClick={skip} disabled={submitting || verifying}>
             Skip & sign out
           </Button>
           <Button
             onClick={submitLogout}
-            disabled={submitting || !selfieBlob}
+            disabled={submitting || verifying || !selfieBlob}
             className="h-12 px-8 bg-gradient-primary shadow-elegant"
           >
-            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <><LogOut className="w-4 h-4 mr-2" /> Confirm Logout <CheckCircle2 className="w-4 h-4 ml-2" /></>}
+            {submitting || verifying ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <LogOut className="w-4 h-4 mr-2" />} 
+            {verifying ? "Verifying Face..." : submitting ? "Logging out..." : "Confirm Logout"}
+            {!submitting && !verifying && <CheckCircle2 className="w-4 h-4 ml-2" />}
           </Button>
         </div>
       </main>

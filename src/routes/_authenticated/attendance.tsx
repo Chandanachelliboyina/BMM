@@ -6,6 +6,7 @@ import { Camera, MapPin, Clock, CheckCircle2, Loader2, RefreshCw, Building2 } fr
 import { supabase } from "@/integrations/supabase/client";
 import { useEmployee } from "@/hooks/useEmployee";
 import { uploadSelfie, getSignedUrl } from "@/lib/storage";
+import { compareFaces, loadFaceModels } from "@/lib/face-recognition";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { GoogleMapEmbed } from "@/components/GoogleMapEmbed";
@@ -31,10 +32,12 @@ function AttendancePage() {
   const [now, setNow] = useState(new Date());
   const [cameraOn, setCameraOn] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [alreadyMarked, setAlreadyMarked] = useState<{ time: string; selfie: string | null } | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
+    loadFaceModels().catch(console.error); // Preload models
     return () => clearInterval(t);
   }, []);
 
@@ -143,6 +146,33 @@ function AttendancePage() {
     if (!employee) return;
     if (!selfieBlob) { toast.error("Please capture your selfie"); return; }
     if (!location) { toast.error("Waiting for location — allow location access"); return; }
+    
+    setVerifying(true);
+    
+    // 1. Face Verification
+    if (!photoUrl) {
+      toast.error("You don't have a profile photo. Please upload one in your profile first.");
+      setVerifying(false);
+      return;
+    }
+    
+    const video = videoRef.current;
+    // We need an image element or video to compare. We have the blob, let's create an image from it to be safe
+    // because video is already stopped.
+    const capturedImg = new Image();
+    capturedImg.src = selfieUrl!;
+    await new Promise((res) => { capturedImg.onload = res; });
+    
+    const result = await compareFaces(capturedImg, photoUrl);
+    
+    if (!result.match) {
+      toast.error(result.error || `Face verification failed. Please try again. Distance: ${result.distance.toFixed(2)}`);
+      setVerifying(false);
+      return;
+    }
+    
+    toast.success(`Face matched! Welcome, ${employee.full_name}`);
+
     setSubmitting(true);
     try {
       const selfiePath = await uploadSelfie(employee.user_id, selfieBlob);
@@ -168,6 +198,7 @@ function AttendancePage() {
       toast.error(err instanceof Error ? err.message : "Failed to mark attendance");
     } finally {
       setSubmitting(false);
+      setVerifying(false);
     }
   };
 
@@ -320,10 +351,11 @@ function AttendancePage() {
           <div className="flex justify-end">
             <Button
               onClick={submit}
-              disabled={submitting || !selfieBlob || !location}
+              disabled={submitting || verifying || !selfieBlob || !location}
               className="h-12 px-8 bg-gradient-primary shadow-elegant"
             >
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <><CheckCircle2 className="w-4 h-4 mr-2" /> Mark Attendance</>}
+              {submitting || verifying ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />} 
+              {verifying ? "Verifying Face..." : submitting ? "Submitting..." : "Mark Attendance"}
             </Button>
           </div>
         )}

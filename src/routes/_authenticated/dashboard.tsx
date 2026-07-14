@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { CalendarCheck, CalendarX2, Clock, TrendingUp, ClipboardList, Activity, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmployee } from "@/hooks/useEmployee";
+import { getSignedUrl } from "@/lib/storage";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -17,26 +18,52 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function DashboardPage() {
   const { employee, photoUrl, loading } = useEmployee();
-  const [stats, setStats] = useState({ present: 0, absent: 0, todayTime: null as string | null });
+  const [stats, setStats] = useState({ 
+    totalOrgEmployees: 0,
+    present: 0, 
+    absent: 0, 
+    todayTime: null as string | null,
+    todayLogout: null as string | null,
+    status: "Absent"
+  });
+  const [latestCard, setLatestCard] = useState<any>(null);
 
   useEffect(() => {
     if (!employee) return;
     (async () => {
       const { data } = await supabase
         .from("attendance")
-        .select("login_date, login_time")
+        .select("*")
         .eq("user_id", employee.user_id)
         .order("login_date", { ascending: false });
+        
+      const { count: totalEmp } = await supabase
+        .from("employees")
+        .select("*", { count: 'exact', head: true });
+
       const present = data?.length ?? 0;
       const today = format(new Date(), "yyyy-MM-dd");
       const todayRow = data?.find((r) => r.login_date === today);
       const joined = employee.joining_date ? new Date(employee.joining_date) : new Date(employee.created_at);
       const daysSince = Math.max(1, Math.ceil((Date.now() - joined.getTime()) / (1000 * 60 * 60 * 24)));
+      
       setStats({
+        totalOrgEmployees: totalEmp || 0,
         present,
         absent: Math.max(0, daysSince - present),
         todayTime: todayRow ? format(new Date(todayRow.login_time), "hh:mm a") : null,
+        todayLogout: todayRow?.logout_time ? format(new Date(todayRow.logout_time), "hh:mm a") : null,
+        status: todayRow ? (todayRow.logout_time ? "Checked Out" : "Checked In") : "Absent"
       });
+
+      if (data && data.length > 0) {
+        const latest = data[0];
+        let selfie = null;
+        if (latest.selfie_image) {
+          selfie = await getSignedUrl("attendance-selfies", latest.selfie_image);
+        }
+        setLatestCard({ ...latest, signedSelfie: selfie });
+      }
     })();
   }, [employee]);
 
@@ -78,20 +105,50 @@ function DashboardPage() {
 
           {/* Stats */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard icon={Clock} label="Today's Login" value={stats.todayTime ?? "—"} sub={stats.todayTime ? "Present" : "Not marked"} tone={stats.todayTime ? "success" : "warn"} />
+            <StatCard icon={User} label="Total Employees" value={String(stats.totalOrgEmployees || 1)} sub="In Organization" tone="muted" />
+            <StatCard icon={Clock} label="Today's Status" value={stats.status} sub={stats.todayTime ? `In: ${stats.todayTime}` + (stats.todayLogout ? ` | Out: ${stats.todayLogout}` : "") : "Not marked"} tone={stats.todayTime ? (stats.todayLogout ? "muted" : "success") : "warn"} />
             <StatCard icon={CalendarCheck} label="Present Days" value={String(stats.present)} sub="This tenure" tone="primary" />
             <StatCard icon={CalendarX2} label="Absent Days" value={String(stats.absent)} sub="Estimated" tone="danger" />
-            <StatCard icon={TrendingUp} label="Total Leaves" value="0" sub="Coming soon" tone="muted" />
           </div>
 
           {/* Sections */}
           <div className="grid gap-4 lg:grid-cols-3">
-            <Card className="p-6 shadow-card lg:col-span-2">
+            <Card className="p-6 shadow-card lg:col-span-2 bg-gradient-to-br from-background to-secondary/20">
               <div className="flex items-center gap-2 mb-4">
                 <ClipboardList className="w-5 h-5 text-primary" />
-                <h3 className="font-semibold">Daily Updates</h3>
+                <h3 className="font-semibold">Latest Attendance Card</h3>
               </div>
-              <p className="text-sm text-muted-foreground">Submit your field notes and progress. Coming soon.</p>
+              {latestCard ? (
+                <div className="flex flex-col sm:flex-row gap-6">
+                  {latestCard.signedSelfie ? (
+                     <img src={latestCard.signedSelfie} alt="Latest Selfie" className="w-32 h-32 rounded-xl object-cover border-4 border-primary/20 shadow-sm" />
+                  ) : (
+                     <div className="w-32 h-32 rounded-xl bg-muted flex items-center justify-center border text-xs text-muted-foreground">No Photo</div>
+                  )}
+                  <div className="space-y-3 flex-1">
+                    <div>
+                      <p className="text-lg font-bold text-foreground">{latestCard.employee_name}</p>
+                      <p className="text-sm text-muted-foreground">{format(new Date(latestCard.login_date), "EEEE, dd MMMM yyyy")}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground text-xs uppercase tracking-wider">Login Time</p>
+                        <p className="font-medium text-success">{format(new Date(latestCard.login_time), "hh:mm a")}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs uppercase tracking-wider">Logout Time</p>
+                        <p className="font-medium text-warning">{latestCard.logout_time ? format(new Date(latestCard.logout_time), "hh:mm a") : "—"}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-muted-foreground text-xs uppercase tracking-wider">Location</p>
+                        <p className="font-medium truncate" title={latestCard.full_address}>{latestCard.full_address || "Unknown"}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No attendance records found yet.</p>
+              )}
             </Card>
             <Card className="p-6 shadow-card">
               <div className="flex items-center gap-2 mb-4">

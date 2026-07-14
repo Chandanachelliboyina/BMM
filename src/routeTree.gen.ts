@@ -14,9 +14,10 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRegisterRouteImport } from './routes/auth.register'
 import { Route as AuthLoginRouteImport } from './routes/auth.login'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
+import { Route as AuthenticatedLogoutRouteImport } from './routes/_authenticated/logout'
+import { Route as AuthenticatedHistoryRouteImport } from './routes/_authenticated/history'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAttendanceRouteImport } from './routes/_authenticated/attendance'
-import { Route as AuthenticatedAttendanceLogoutRouteImport } from './routes/_authenticated/attendance.logout'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
@@ -42,6 +43,16 @@ const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedLogoutRoute = AuthenticatedLogoutRouteImport.update({
+  id: '/logout',
+  path: '/logout',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedHistoryRoute = AuthenticatedHistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -52,41 +63,38 @@ const AuthenticatedAttendanceRoute = AuthenticatedAttendanceRouteImport.update({
   path: '/attendance',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedAttendanceLogoutRoute =
-  AuthenticatedAttendanceLogoutRouteImport.update({
-    id: '/logout',
-    path: '/logout',
-    getParentRoute: () => AuthenticatedAttendanceRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/attendance': typeof AuthenticatedAttendanceRouteWithChildren
+  '/attendance': typeof AuthenticatedAttendanceRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/history': typeof AuthenticatedHistoryRoute
+  '/logout': typeof AuthenticatedLogoutRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/register': typeof AuthRegisterRoute
-  '/attendance/logout': typeof AuthenticatedAttendanceLogoutRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/attendance': typeof AuthenticatedAttendanceRouteWithChildren
+  '/attendance': typeof AuthenticatedAttendanceRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/history': typeof AuthenticatedHistoryRoute
+  '/logout': typeof AuthenticatedLogoutRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/register': typeof AuthRegisterRoute
-  '/attendance/logout': typeof AuthenticatedAttendanceLogoutRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
-  '/_authenticated/attendance': typeof AuthenticatedAttendanceRouteWithChildren
+  '/_authenticated/attendance': typeof AuthenticatedAttendanceRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/history': typeof AuthenticatedHistoryRoute
+  '/_authenticated/logout': typeof AuthenticatedLogoutRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/register': typeof AuthRegisterRoute
-  '/_authenticated/attendance/logout': typeof AuthenticatedAttendanceLogoutRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -94,29 +102,32 @@ export interface FileRouteTypes {
     | '/'
     | '/attendance'
     | '/dashboard'
+    | '/history'
+    | '/logout'
     | '/profile'
     | '/auth/login'
     | '/auth/register'
-    | '/attendance/logout'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/attendance'
     | '/dashboard'
+    | '/history'
+    | '/logout'
     | '/profile'
     | '/auth/login'
     | '/auth/register'
-    | '/attendance/logout'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/_authenticated/attendance'
     | '/_authenticated/dashboard'
+    | '/_authenticated/history'
+    | '/_authenticated/logout'
     | '/_authenticated/profile'
     | '/auth/login'
     | '/auth/register'
-    | '/_authenticated/attendance/logout'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -163,6 +174,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProfileRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/logout': {
+      id: '/_authenticated/logout'
+      path: '/logout'
+      fullPath: '/logout'
+      preLoaderRoute: typeof AuthenticatedLogoutRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/history': {
+      id: '/_authenticated/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof AuthenticatedHistoryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
@@ -177,39 +202,22 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAttendanceRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/attendance/logout': {
-      id: '/_authenticated/attendance/logout'
-      path: '/logout'
-      fullPath: '/attendance/logout'
-      preLoaderRoute: typeof AuthenticatedAttendanceLogoutRouteImport
-      parentRoute: typeof AuthenticatedAttendanceRoute
-    }
   }
 }
-
-interface AuthenticatedAttendanceRouteChildren {
-  AuthenticatedAttendanceLogoutRoute: typeof AuthenticatedAttendanceLogoutRoute
-}
-
-const AuthenticatedAttendanceRouteChildren: AuthenticatedAttendanceRouteChildren =
-  {
-    AuthenticatedAttendanceLogoutRoute: AuthenticatedAttendanceLogoutRoute,
-  }
-
-const AuthenticatedAttendanceRouteWithChildren =
-  AuthenticatedAttendanceRoute._addFileChildren(
-    AuthenticatedAttendanceRouteChildren,
-  )
 
 interface AuthenticatedRouteRouteChildren {
-  AuthenticatedAttendanceRoute: typeof AuthenticatedAttendanceRouteWithChildren
+  AuthenticatedAttendanceRoute: typeof AuthenticatedAttendanceRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedHistoryRoute: typeof AuthenticatedHistoryRoute
+  AuthenticatedLogoutRoute: typeof AuthenticatedLogoutRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
-  AuthenticatedAttendanceRoute: AuthenticatedAttendanceRouteWithChildren,
+  AuthenticatedAttendanceRoute: AuthenticatedAttendanceRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedHistoryRoute: AuthenticatedHistoryRoute,
+  AuthenticatedLogoutRoute: AuthenticatedLogoutRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
 }
 
@@ -225,3 +233,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

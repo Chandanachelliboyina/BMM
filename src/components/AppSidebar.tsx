@@ -10,6 +10,7 @@ const items = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "My Profile", url: "/profile", icon: User },
   { title: "Attendance", url: "/attendance", icon: CalendarCheck },
+  { title: "Attendance History", url: "/history", icon: ClipboardList },
   { title: "Daily Updates", url: "/updates", icon: ClipboardList },
   { title: "Activities", url: "/activities", icon: Activity },
   { title: "Leave Management", url: "/leaves", icon: CalendarDays },
@@ -27,7 +28,7 @@ export function AppSidebar() {
 
   const signOut = async () => {
     // Route to the logout selfie flow; that page handles actual sign-out.
-    navigate({ to: "/attendance/logout" });
+    navigate({ to: "/logout" });
   };
 
   return (

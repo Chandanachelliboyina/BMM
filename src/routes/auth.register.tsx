@@ -166,7 +166,7 @@ function RegisterPage() {
     <div className="min-h-screen bg-secondary/30 py-8 px-4">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center gap-3 mb-6 text-primary">
-          <Building2 className="w-7 h-7" />
+          <img src="/logo.png" alt="BMM Logo" className="w-9 h-9 object-cover rounded-md shadow-sm" />
           <span className="text-xl font-semibold">Bheemabhai Mahila Mandali (BMM)</span>
         </div>
         <Card className="p-6 sm:p-8 shadow-card">

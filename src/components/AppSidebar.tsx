@@ -35,12 +35,12 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b">
         <div className="flex items-center gap-2 px-2 py-3">
-          <div className="w-9 h-9 rounded-lg bg-gradient-primary flex items-center justify-center shadow-elegant">
-            <Building2 className="w-5 h-5 text-primary-foreground" />
+          <div className="w-10 h-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shrink-0 shadow-sm overflow-hidden p-0.5">
+            <img src="/logo.png" alt="BMM Logo" className="w-full h-full object-cover rounded-lg" />
           </div>
           {!collapsed && (
-            <div>
-              <p className="font-semibold text-sm leading-tight">Bheemabhai Mahila Mandali</p>
+            <div className="flex-1 overflow-hidden">
+              <p className="font-semibold text-sm leading-tight truncate">Bheemabhai Mahila Mandali</p>
               <p className="text-xs text-muted-foreground">BMM · Employee Portal</p>
             </div>
           )}

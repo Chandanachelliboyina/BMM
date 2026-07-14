@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Card, CardContent } from "@/components/ui/card";
+import { AppShell } from "@/components/AppShell";
 
 export const Route = createFileRoute("/_authenticated/home")({
   component: HomePage,
@@ -7,12 +8,9 @@ export const Route = createFileRoute("/_authenticated/home")({
 
 function HomePage() {
   return (
-    <div className="flex-1 space-y-6 p-4 md:p-8 pt-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">Home</h2>
-      </div>
-
-      <Card className="overflow-hidden border-none shadow-md">
+    <AppShell title="Home">
+      <div className="flex-1 space-y-6 p-4 md:p-8 pt-6 max-w-5xl mx-auto">
+        <Card className="overflow-hidden border-none shadow-md">
         <div className="relative w-full h-64 md:h-96">
           <img
             src="/BMM_IMAGE.webp"
@@ -52,5 +50,6 @@ function HomePage() {
         </CardContent>
       </Card>
     </div>
+    </AppShell>
   );
 }

@@ -9,7 +9,8 @@ export const Route = createFileRoute("/_authenticated/home")({
 
 const SLIDES = [
   "/BMM_IMAGE.webp",
-  "/BMM_H.jpg"
+  "/BMM_H.jpg",
+  "/BMM_T.jpg"
 ];
 
 function HomePage() {

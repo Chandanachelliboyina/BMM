@@ -22,6 +22,7 @@ function ActivitiesPage() {
   // Form State
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [villages, setVillages] = useState("");
+  const [villageNames, setVillageNames] = useState("");
   const [meetings, setMeetings] = useState("");
   const [remarks, setRemarks] = useState("");
 
@@ -51,6 +52,7 @@ function ActivitiesPage() {
         user_id: user.user.id,
         date: date,
         villages_visited: parseInt(villages) || 0,
+        village_names: villageNames,
         meetings_conducted: meetings,
         remarks: remarks,
       });
@@ -61,6 +63,7 @@ function ActivitiesPage() {
       toast.success("Activity logged successfully!");
       queryClient.invalidateQueries({ queryKey: ["activities"] });
       setVillages("");
+      setVillageNames("");
       setMeetings("");
       setRemarks("");
       setIsSubmitting(false);
@@ -123,6 +126,15 @@ function ActivitiesPage() {
                 </div>
 
                 <div className="space-y-2">
+                  <Label>Villages Names</Label>
+                  <Input 
+                    placeholder="e.g. Village A, Village B" 
+                    value={villageNames} 
+                    onChange={(e) => setVillageNames(e.target.value)} 
+                  />
+                </div>
+
+                <div className="space-y-2">
                   <Label>Meetings Conducted</Label>
                   <Input 
                     placeholder="Which meetings? (e.g. SHG meeting)" 
@@ -170,10 +182,17 @@ function ActivitiesPage() {
                     <div key={act.id} className="p-4 rounded-lg border bg-card text-card-foreground shadow-sm">
                       <div className="flex justify-between items-start mb-2">
                         <div className="font-semibold">{new Date(act.date).toLocaleDateString()}</div>
-                        <div className="text-sm bg-primary/10 text-primary px-2 py-1 rounded-md">
-                          {act.villages_visited || 0} Villages
+                        <div className="text-sm bg-primary/10 text-primary px-2 py-1 rounded-md flex flex-col items-end">
+                          <span>{act.villages_visited || 0} Villages</span>
                         </div>
                       </div>
+
+                      {act.village_names && (
+                        <div className="mb-2">
+                          <span className="text-sm font-medium text-muted-foreground block mb-1">Villages Names:</span>
+                          <p className="text-sm">{act.village_names}</p>
+                        </div>
+                      )}
                       
                       {act.meetings_conducted && (
                         <div className="mb-2">

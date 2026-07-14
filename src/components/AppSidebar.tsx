@@ -15,7 +15,6 @@ const items = [
   { title: "Daily Updates", url: "/updates", icon: ClipboardList },
   { title: "Activities", url: "/activities", icon: Activity },
   { title: "Leave Management", url: "/leaves", icon: CalendarDays },
-  { title: "Reports", url: "/reports", icon: BarChart3 },
   { title: "Notifications", url: "/notifications", icon: Bell },
   { title: "Settings", url: "/settings", icon: Settings },
 ] as const;

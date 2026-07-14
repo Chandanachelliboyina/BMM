@@ -21,6 +21,7 @@ export type Database = {
           created_at: string
           date: string
           villages_visited: number | null
+          village_names: string | null
           meetings_conducted: string | null
           remarks: string | null
         }
@@ -30,6 +31,7 @@ export type Database = {
           created_at?: string
           date: string
           villages_visited?: number | null
+          village_names?: string | null
           meetings_conducted?: string | null
           remarks?: string | null
         }
@@ -39,6 +41,7 @@ export type Database = {
           created_at?: string
           date?: string
           villages_visited?: number | null
+          village_names?: string | null
           meetings_conducted?: string | null
           remarks?: string | null
         }

@@ -24,6 +24,7 @@ function LeavesPage() {
   const [leaveDate, setLeaveDate] = useState("");
   const [leaveType, setLeaveType] = useState<string>("");
   const [reason, setReason] = useState("");
+  const [reportImage, setReportImage] = useState<File | null>(null);
 
   const { data: leaves, isLoading } = useQuery({
     queryKey: ["leaves"],
@@ -69,6 +70,7 @@ function LeavesPage() {
       setLeaveDate("");
       setLeaveType("");
       setReason("");
+      setReportImage(null);
       setIsSubmitting(false);
     },
     onError: (error) => {
@@ -201,6 +203,31 @@ function LeavesPage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {leaveType === "Sick" && (
+                  <div className="space-y-2">
+                    <Label>Medical Report (Image)</Label>
+                    {!reportImage ? (
+                      <Input 
+                        type="file" 
+                        accept="image/*"
+                        onChange={(e) => setReportImage(e.target.files?.[0] || null)}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-between p-2 border rounded-md">
+                        <span className="text-sm truncate max-w-[200px]">{reportImage.name}</span>
+                        <Button 
+                          type="button" 
+                          variant="destructive" 
+                          size="sm"
+                          onClick={() => setReportImage(null)}
+                        >
+                          Remove Report
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label>Reason</Label>

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Upload, Mail, Phone, MapPin, Building2, IdCard, Briefcase } from "lucide-react";
+import { Loader2, Upload, Mail, Phone, MapPin, Building2, IdCard, Briefcase, Edit2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmployee } from "@/hooks/useEmployee";
 import { uploadProfilePhoto } from "@/lib/storage";
@@ -23,6 +23,7 @@ function ProfilePage() {
   const { employee, photoUrl, loading, refresh } = useEmployee();
   const fileRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState({ email: "", mobile_number: "", address: "", village: "" });
 
   useEffect(() => {
@@ -47,7 +48,23 @@ function ProfilePage() {
     }).eq("user_id", employee.user_id);
     setSaving(false);
     if (error) toast.error(error.message);
-    else { toast.success("Profile updated"); refresh(); }
+    else { 
+      toast.success("Profile updated"); 
+      setIsEditing(false);
+      refresh(); 
+    }
+  };
+
+  const cancelEdit = () => {
+    if (employee) {
+      setForm({
+        email: employee.email,
+        mobile_number: employee.mobile_number,
+        address: employee.address ?? "",
+        village: employee.village ?? "",
+      });
+    }
+    setIsEditing(false);
   };
 
   const onPhoto = async (file: File | null) => {
@@ -100,26 +117,51 @@ function ProfilePage() {
             </div>
           </Card>
 
-          <Card className="p-6 shadow-card lg:col-span-2">
-            <h3 className="font-semibold text-lg">Editable Information</h3>
-            <p className="text-sm text-muted-foreground">Update your contact details, address and profile photo.</p>
+          <Card className="p-6 shadow-card lg:col-span-2 relative">
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h3 className="font-semibold text-lg">Contact Information</h3>
+                <p className="text-sm text-muted-foreground">Your contact details and address.</p>
+              </div>
+              {!isEditing && (
+                <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
+                  <Edit2 className="w-4 h-4 mr-2" /> Edit Profile
+                </Button>
+              )}
+            </div>
 
-            <div className="mt-6 grid sm:grid-cols-2 gap-4">
+            <div className="mt-2 grid sm:grid-cols-2 gap-6">
               <div className="space-y-1.5">
                 <Label>Email <Mail className="w-3 h-3 inline text-muted-foreground" /></Label>
-                <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                {isEditing ? (
+                  <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                ) : (
+                  <p className="font-medium bg-muted/30 p-2.5 rounded-md border">{form.email || "—"}</p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label>Mobile <Phone className="w-3 h-3 inline text-muted-foreground" /></Label>
-                <Input inputMode="numeric" maxLength={10} value={form.mobile_number} onChange={(e) => setForm({ ...form, mobile_number: e.target.value.replace(/\D/g, "") })} />
+                {isEditing ? (
+                  <Input inputMode="numeric" maxLength={10} value={form.mobile_number} onChange={(e) => setForm({ ...form, mobile_number: e.target.value.replace(/\D/g, "") })} />
+                ) : (
+                  <p className="font-medium bg-muted/30 p-2.5 rounded-md border">{form.mobile_number || "—"}</p>
+                )}
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 sm:col-span-2">
                 <Label>Village</Label>
-                <Input value={form.village} onChange={(e) => setForm({ ...form, village: e.target.value })} />
+                {isEditing ? (
+                  <Input value={form.village} onChange={(e) => setForm({ ...form, village: e.target.value })} />
+                ) : (
+                  <p className="font-medium bg-muted/30 p-2.5 rounded-md border">{form.village || "—"}</p>
+                )}
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label>Address</Label>
-                <Textarea rows={3} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+                {isEditing ? (
+                  <Textarea rows={3} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+                ) : (
+                  <p className="font-medium bg-muted/30 p-3 rounded-md border whitespace-pre-wrap min-h-[80px]">{form.address || "—"}</p>
+                )}
               </div>
             </div>
 
@@ -136,11 +178,17 @@ function ProfilePage() {
               </dl>
             </div>
 
-            <div className="mt-6 flex justify-end">
-              <Button onClick={save} disabled={saving} className="bg-gradient-primary shadow-elegant">
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save changes"}
-              </Button>
-            </div>
+            {isEditing && (
+              <div className="mt-6 flex justify-end gap-3 pt-6 border-t">
+                <Button variant="ghost" onClick={cancelEdit} disabled={saving}>
+                  Cancel
+                </Button>
+                <Button onClick={save} disabled={saving} className="bg-gradient-primary shadow-elegant">
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                  Save changes
+                </Button>
+              </div>
+            )}
           </Card>
         </div>
       )}

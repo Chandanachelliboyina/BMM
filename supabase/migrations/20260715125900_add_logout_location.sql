@@ -1,0 +1,1 @@
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS logout_gps_latitude NUMERIC(10, 7), ADD COLUMN IF NOT EXISTS logout_gps_longitude NUMERIC(10, 7), ADD COLUMN IF NOT EXISTS logout_full_address TEXT;

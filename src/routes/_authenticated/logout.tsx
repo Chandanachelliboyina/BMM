@@ -203,7 +203,13 @@ function LogoutAttendancePage() {
         } as never)
         .eq("user_id", employee.user_id)
         .eq("login_date", today);
-      if (error) console.warn("Logout attendance update failed:", error.message);
+      if (error) {
+        console.warn("Logout attendance update failed:", error.message);
+        toast.error("Failed to save logout data. Please try again.");
+        setSubmitting(false);
+        setVerifying(false);
+        return;
+      }
 
       toast.success("Logout attendance recorded");
 

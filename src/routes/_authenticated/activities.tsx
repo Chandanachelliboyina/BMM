@@ -22,6 +22,25 @@ export const Route = createFileRoute("/_authenticated/activities")({
 
 const mandalsList = Object.keys(MANDAL_VILLAGES_DATA).sort();
 
+const STRATEGY_OPTIONS = [
+  "Home Visit",
+  "Phone Call",
+  "Met in Meeting",
+  "Field Visit",
+  "Directly (face to face)",
+  "SHG",
+  "Vo's",
+  "Women peer Group's",
+  "Gender Commeters",
+  "Through Phamplets",
+  "Village Elders",
+  "Through Stackholder",
+  "CF'S",
+  "ANM'S",
+  "ASHa's"
+];
+
+
 function LocationSelector({ 
   mandal, setMandal, village, setVillage 
 }: { 
@@ -534,11 +553,14 @@ function ActivitiesPage() {
                           </div>
                           <div className="space-y-2">
                             <Label>Strategy</Label>
-                            <Input 
-                              placeholder="Enter strategy..." 
-                              value={caseStrategy} 
-                              onChange={(e) => setCaseStrategy(e.target.value)} 
-                            />
+                            <Select value={caseStrategy} onValueChange={setCaseStrategy}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select strategy..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {STRATEGY_OPTIONS.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
                           </div>
                         </div>
                       )}
@@ -584,11 +606,14 @@ function ActivitiesPage() {
                           </div>
                           <div className="space-y-2">
                             <Label>Strategy</Label>
-                            <Input 
-                              placeholder="Enter strategy..." 
-                              value={followUpStrategy} 
-                              onChange={(e) => setFollowUpStrategy(e.target.value)} 
-                            />
+                            <Select value={followUpStrategy} onValueChange={setFollowUpStrategy}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select strategy..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {STRATEGY_OPTIONS.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
                           </div>
                         </div>
                       )}
@@ -634,11 +659,14 @@ function ActivitiesPage() {
                           </div>
                           <div className="space-y-2">
                             <Label>Strategy</Label>
-                            <Input 
-                              placeholder="Enter strategy..." 
-                              value={counsellingStrategy} 
-                              onChange={(e) => setCounsellingStrategy(e.target.value)} 
-                            />
+                            <Select value={counsellingStrategy} onValueChange={setCounsellingStrategy}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select strategy..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {STRATEGY_OPTIONS.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
                           </div>
                         </div>
                       )}
@@ -743,11 +771,14 @@ function ActivitiesPage() {
                           <LocationSelector mandal={homeVisitMandal} setMandal={setHomeVisitMandal} village={homeVisitVillage} setVillage={setHomeVisitVillage} />
                           <div className="space-y-2">
                             <Label>Strategy</Label>
-                            <Input 
-                              placeholder="Enter strategy..." 
-                              value={homeVisitStrategy} 
-                              onChange={(e) => setHomeVisitStrategy(e.target.value)} 
-                            />
+                            <Select value={homeVisitStrategy} onValueChange={setHomeVisitStrategy}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select strategy..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {STRATEGY_OPTIONS.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
                           </div>
                         </div>
                       )}

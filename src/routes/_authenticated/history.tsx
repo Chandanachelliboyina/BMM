@@ -140,6 +140,7 @@ function HistoryPage() {
                   <TableHead>Check Out</TableHead>
                   <TableHead>Working Hours</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Location</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -173,6 +174,9 @@ function HistoryPage() {
                           <Badge variant="outline" className={record.logout_time ? "bg-success/10 text-success" : "bg-warning/10 text-warning-foreground"}>
                             {record.logout_time ? "Completed" : "Checked In"}
                           </Badge>
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate text-xs" title={record.logout_full_address || record.full_address || "N/A"}>
+                          {record.logout_full_address ? record.logout_full_address : (record.full_address || "N/A")}
                         </TableCell>
                       </TableRow>
                     );

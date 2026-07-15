@@ -140,9 +140,15 @@ function DashboardPage() {
                         <p className="font-medium text-warning">{latestCard.logout_time ? format(new Date(latestCard.logout_time), "hh:mm a") : "—"}</p>
                       </div>
                       <div className="col-span-2">
-                        <p className="text-muted-foreground text-xs uppercase tracking-wider">Location</p>
+                        <p className="text-muted-foreground text-xs uppercase tracking-wider">Check In Location</p>
                         <p className="font-medium truncate" title={latestCard.full_address}>{latestCard.full_address || "Unknown"}</p>
                       </div>
+                      {latestCard.logout_time && (
+                        <div className="col-span-2 mt-1">
+                          <p className="text-muted-foreground text-xs uppercase tracking-wider">Check Out Location</p>
+                          <p className="font-medium truncate" title={latestCard.logout_full_address}>{latestCard.logout_full_address || "Unknown"}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

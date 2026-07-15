@@ -31,10 +31,10 @@ const STRATEGY_OPTIONS = [
   "SHG",
   "Vo's",
   "Women peer Group's",
-  "Gender Commeters",
+  "Gender Commitees",
   "Through Phamplets",
   "Village Elders",
-  "Through Stackholder",
+  "Through Stakeholder",
   "CF'S",
   "ANM'S",
   "ASHa's"

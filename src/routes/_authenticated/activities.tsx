@@ -40,6 +40,49 @@ const STRATEGY_OPTIONS = [
   "ASHa's"
 ];
 
+const OFFICE_DOC_TABS = [
+  { id: "case_management", label: "Case Management Sheets", fields: [{ name: "type", label: "Select Type", type: "select", options: ["VAM", "HIV", "Environment"] }] },
+  { id: "work_reports", label: "Work Reports", fields: [{ name: "reporting_period", label: "Reporting Period", type: "text" }] },
+  { id: "work_plans", label: "Work Plans", fields: [{ name: "reporting_period", label: "Reporting Period", type: "text" }] },
+  { id: "village_survey", label: "Village Survey", fields: [
+    { name: "reporting_period", label: "Reporting Period", type: "text" },
+    { name: "village", label: "Name of the Village", type: "text" },
+    { name: "department", label: "Department of the Survey", type: "text" },
+    { name: "target_group", label: "Target Group", type: "text" }
+  ]},
+  { id: "bills_vouchers", label: "Bills and Vouchers", fields: [{ name: "reporting_period", label: "Reporting Period", type: "text" }] },
+  { id: "tally", label: "Tally", fields: [{ name: "reporting_period", label: "Reporting Period", type: "text" }] },
+  { id: "cash_book", label: "Cash Book", fields: [{ name: "reporting_period", label: "Reporting Period", type: "text" }] },
+  { id: "cheque_prep", label: "Cheque Preparation", fields: [{ name: "cheque_numbers", label: "Cheque Numbers", type: "text" }] },
+  { id: "narrative_report", label: "Narrative Report", fields: [{ name: "reporting_period", label: "Reporting Period", type: "text" }] },
+  { id: "activity_report", label: "Activity Report", fields: [{ name: "reporting_period", label: "Reporting Period", type: "text" }] },
+  { id: "brs", label: "BRS", fields: [{ name: "reporting_period", label: "Reporting Period", type: "text" }] },
+  { id: "staff_minutes", label: "Staff Meeting Minutes", fields: [{ name: "reporting_period", label: "Reporting Period", type: "text" }] },
+  { id: "case_studies", label: "Case Studies", fields: [
+    { name: "reporting_period", label: "Reporting Period", type: "text" },
+    { name: "beneficier", label: "Name of the Beneficier", type: "text" },
+    { name: "village", label: "Village", type: "text" }
+  ]},
+  { id: "photos_print", label: "Photos Print out", fields: [
+    { name: "quantity", label: "Quantity", type: "number" },
+    { name: "project_name", label: "Project Name", type: "text" }
+  ]},
+  { id: "commitee_minutes", label: "Commitee Minutes", fields: [
+    { name: "reporting_period", label: "Reporting Period", type: "text" },
+    { name: "commitee_name", label: "Name of the Commitee", type: "text" }
+  ]},
+  { id: "staff_appointment", label: "Staff Appointement Letters", fields: [{ name: "reporting_period", label: "Reporting Period", type: "text" }] },
+  { id: "public_donation", label: "Public Donation Receipts", fields: [{ name: "reporting_period", label: "Reporting Period", type: "text" }] },
+  { id: "variance_analysis", label: "Variance Analysis", fields: [{ name: "reporting_period", label: "Reporting Period", type: "text" }] },
+  { id: "travel", label: "Travel", fields: [{ name: "reporting_period", label: "Reporting Period", type: "text" }] },
+  { id: "participants_sig", label: "Participants signature", fields: [
+    { name: "reporting_period", label: "Reporting Period", type: "text" },
+    { name: "meetings_heads", label: "Meetings Heads", type: "text" }
+  ]},
+  { id: "staff_appraisal", label: "Staff Appraisal Forms", fields: [{ name: "reporting_period", label: "Reporting Period", type: "text" }] },
+  { id: "receipts_list", label: "Receipts List", fields: [{ name: "reporting_period", label: "Reporting Period", type: "text" }] },
+];
+
 
 function LocationSelector({ 
   mandal, setMandal, village, setVillage 
@@ -154,10 +197,8 @@ function ActivitiesPage() {
   const [staffCapacity, setStaffCapacity] = useState("");
   const [staffReview, setStaffReview] = useState("");
   const [staffReviewPlace, setStaffReviewPlace] = useState("");
-  const [officeDoc, setOfficeDoc] = useState("");
-  const [officeDocOptions, setOfficeDocOptions] = useState<string[]>([]);
-  const [officeDocMinutesQuantity, setOfficeDocMinutesQuantity] = useState("");
-  const [officeDocMinutesHeads, setOfficeDocMinutesHeads] = useState("");
+  const [activeOfficeTab, setActiveOfficeTab] = useState("");
+  const [officeDocData, setOfficeDocData] = useState<Record<string, Record<string, string>>>({});
   
   const [remarks, setRemarks] = useState("");
   const [activeTab, setActiveTab] = useState<string>("awarenessMeeting");
@@ -210,7 +251,14 @@ function ActivitiesPage() {
         (nutritionKits || nutritionKitsVillage || nutritionKitsQuantity) ? `Participated in Nutrition Kits\n- Mandal: ${nutritionKitsMandal || "N/A"}\n- Village: ${nutritionKitsVillage || "N/A"}\n- Quantity: ${nutritionKitsQuantity || "N/A"}` : "",
         staffCapacity ? `Participated in Staff Capacity Building: ${staffCapacity}` : "",
         (staffReview || staffReviewPlace) ? `Participated in Month Staff Review Meeting\n- Place: ${staffReviewPlace || "N/A"}` : "",
-        officeDocOptions.length > 0 ? `Attended Office for Documentation\n- Selected: ${officeDocOptions.join(", ")}${officeDocOptions.includes("Minutes") ? `\n  - Minutes Quantity: ${officeDocMinutesQuantity || "N/A"}\n  - Minutes Heads: ${officeDocMinutesHeads || "N/A"}` : ""}` : "",
+        Object.keys(officeDocData).length > 0 ? `Attended Office for Documentation\n${Object.entries(officeDocData).map(([tabId, data]) => {
+          const tabDef = OFFICE_DOC_TABS.find(t => t.id === tabId);
+          if (!tabDef) return "";
+          return `- ${tabDef.label}:\n` + Object.entries(data).map(([fieldKey, val]) => {
+            const fieldDef = tabDef.fields.find(f => f.name === fieldKey);
+            return `  - ${fieldDef ? fieldDef.label : fieldKey}: ${val}`;
+          }).join("\n");
+        }).join("\n")}` : "",
         remarks ? `General Remarks: ${remarks}` : ""
       ].filter(Boolean).join("\n\n");
 
@@ -299,10 +347,8 @@ function ActivitiesPage() {
       setStaffCapacity("");
       setStaffReview("");
       setStaffReviewPlace("");
-      setOfficeDoc("");
-      setOfficeDocOptions([]);
-      setOfficeDocMinutesQuantity("");
-      setOfficeDocMinutesHeads("");
+      setOfficeDocData({});
+      setActiveOfficeTab("");
       
       setRemarks("");
       setIsSubmitting(false);
@@ -946,50 +992,58 @@ function ActivitiesPage() {
                   
                   {activeTab === "officeDoc" && (
                     <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
-                      <Label>Attended Office for Documentation</Label>
-                      <div className="flex flex-col space-y-3 border p-4 rounded-md">
-                        {["Work report", "Work plan", "Minutes", "Participants signatures", "Travel"].map((option) => (
-                          <div key={option} className="flex items-center space-x-3">
-                            <Checkbox
-                              id={`office-doc-${option}`}
-                              checked={officeDocOptions.includes(option)}
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  setOfficeDocOptions([...officeDocOptions, option]);
-                                } else {
-                                  setOfficeDocOptions(officeDocOptions.filter(item => item !== option));
-                                }
-                              }}
-                            />
-                            <label
-                              htmlFor={`office-doc-${option}`}
-                              className="text-sm font-medium leading-none cursor-pointer"
+                      <div className="space-y-3">
+                        <Label>Select Documentation Category:</Label>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                          {OFFICE_DOC_TABS.map((tab) => (
+                            <Button
+                              key={tab.id}
+                              type="button"
+                              variant={activeOfficeTab === tab.id ? "default" : "secondary"}
+                              onClick={() => setActiveOfficeTab(tab.id)}
+                              className="text-xs w-full h-full whitespace-normal min-h-[48px]"
                             >
-                              {option}
-                            </label>
-                          </div>
-                        ))}
+                              {tab.label}
+                            </Button>
+                          ))}
+                        </div>
                       </div>
 
-                      {officeDocOptions.includes("Minutes") && (
+                      {activeOfficeTab && (
                         <div className="space-y-4 pt-4 border-t border-border mt-4 animate-in slide-in-from-top-2">
-                          <div className="space-y-2">
-                            <Label>Quantity</Label>
-                            <Input 
-                              type="number"
-                              placeholder="Enter quantity..." 
-                              value={officeDocMinutesQuantity} 
-                              onChange={(e) => setOfficeDocMinutesQuantity(e.target.value)} 
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>No. of heads</Label>
-                            <Input 
-                              placeholder="Enter number of heads..." 
-                              value={officeDocMinutesHeads} 
-                              onChange={(e) => setOfficeDocMinutesHeads(e.target.value)} 
-                            />
-                          </div>
+                          {OFFICE_DOC_TABS.find(t => t.id === activeOfficeTab)?.fields.map(field => (
+                            <div key={field.name} className="space-y-2">
+                              <Label>{field.label}</Label>
+                              {field.type === "select" ? (
+                                <Select 
+                                  value={officeDocData[activeOfficeTab]?.[field.name] || ""} 
+                                  onValueChange={(val) => setOfficeDocData({
+                                    ...officeDocData,
+                                    [activeOfficeTab]: { ...(officeDocData[activeOfficeTab] || {}), [field.name]: val }
+                                  })}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder={`Select ${field.label}...`} />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {field.options?.map(opt => (
+                                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <Input 
+                                  type={field.type}
+                                  placeholder={`Enter ${field.label}...`} 
+                                  value={officeDocData[activeOfficeTab]?.[field.name] || ""} 
+                                  onChange={(e) => setOfficeDocData({
+                                    ...officeDocData,
+                                    [activeOfficeTab]: { ...(officeDocData[activeOfficeTab] || {}), [field.name]: e.target.value }
+                                  })}
+                                />
+                              )}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>

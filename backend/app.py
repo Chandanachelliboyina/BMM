@@ -1,11 +1,13 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import Optional, List
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 from dotenv import load_dotenv
+from bson import ObjectId
 
 # Load environment variables from .env file
-
 load_dotenv()
 
 app = FastAPI(
@@ -34,7 +36,7 @@ async def startup_db_client():
     try:
         # Initialize MongoDB Async Client
         client = AsyncIOMotorClient(MONGO_URI)
-        # Select the database (you can change the name)
+        # Select the database
         db = client.bmm_database
         # Verify connection by pinging the server
         await client.admin.command('ping')
@@ -47,6 +49,33 @@ async def shutdown_db_client():
     if client:
         client.close()
         print("MongoDB connection closed.")
+
+
+# --- Pydantic Models ---
+class ActivityModel(BaseModel):
+    user_id: str
+    date: str
+    villages_visited: Optional[int] = 0
+    village_names: Optional[str] = ""
+    meetings_conducted: Optional[str] = ""
+    remarks: Optional[str] = ""
+
+class ActivityResponseModel(ActivityModel):
+    id: str
+
+# Helper function to parse ObjectId
+def activity_helper(activity) -> dict:
+    return {
+        "id": str(activity["_id"]),
+        "user_id": activity.get("user_id"),
+        "date": activity.get("date"),
+        "villages_visited": activity.get("villages_visited", 0),
+        "village_names": activity.get("village_names", ""),
+        "meetings_conducted": activity.get("meetings_conducted", ""),
+        "remarks": activity.get("remarks", "")
+    }
+
+# --- Routes ---
 
 @app.get("/")
 async def root():
@@ -64,26 +93,29 @@ async def health_check():
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
 
-@app.post("/api/test-db")
-async def test_db_write():
-    """Test writing to MongoDB Atlas"""
+@app.post("/api/activities", response_model=ActivityResponseModel, status_code=201)
+async def create_activity(activity: ActivityModel):
+    """Create a new activity log"""
     try:
-        collection = db.test_collection
-        test_doc = {"name": "test_user", "status": "active", "project": "BMM"}
-        result = await collection.insert_one(test_doc)
-        
-        # Retrieve the document we just created
-        saved_doc = await collection.find_one({"_id": result.inserted_id})
-        
-        # Convert ObjectId to string for JSON serialization
-        saved_doc["_id"] = str(saved_doc["_id"])
-        
-        return {
-            "message": "Database write successful!", 
-            "data": saved_doc
-        }
+        collection = db.activities
+        new_activity = await collection.insert_one(activity.dict())
+        created_activity = await collection.find_one({"_id": new_activity.inserted_id})
+        return activity_helper(created_activity)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/activities", response_model=List[ActivityResponseModel])
+async def get_activities():
+    """Retrieve all activities"""
+    try:
+        collection = db.activities
+        activities = []
+        async for activity in collection.find():
+            activities.append(activity_helper(activity))
+        return activities
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn

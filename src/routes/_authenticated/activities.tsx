@@ -380,8 +380,7 @@ function ActivitiesPage() {
                           {[
                             { id: "head", label: "HEAD OF THE MEETING" },
                             { id: "programme", label: "NAME OF THE PROGRAMME" },
-                            { id: "village", label: "TARGET VILLAGE" },
-                            { id: "mandal", label: "TARGET MANDAL" },
+                            { id: "target", label: "TARGET" },
                             { id: "participants", label: "PARTICIPANT REACHED" },
                             { id: "cost", label: "IF ANY COST INCLUDE BY YOU" },
                           ].map((tab) => (
@@ -419,23 +418,14 @@ function ActivitiesPage() {
                             />
                           </div>
                         )}
-                        {activeAwTab === "village" && (
-                          <div className="space-y-2">
-                            <Label>Target Village</Label>
-                            <Input 
-                              placeholder="Enter target village..." 
-                              value={awarenessVillage} 
-                              onChange={(e) => setAwarenessVillage(e.target.value)} 
-                            />
-                          </div>
-                        )}
-                        {activeAwTab === "mandal" && (
-                          <div className="space-y-2">
-                            <Label>Target Mandal</Label>
-                            <Input 
-                              placeholder="Enter target mandal..." 
-                              value={awarenessMandal} 
-                              onChange={(e) => setAwarenessMandal(e.target.value)} 
+                        {activeAwTab === "target" && (
+                          <div className="space-y-4">
+                            <Label>Target Location</Label>
+                            <LocationSelector 
+                              mandal={awarenessMandal} 
+                              setMandal={setAwarenessMandal} 
+                              village={awarenessVillage} 
+                              setVillage={setAwarenessVillage} 
                             />
                           </div>
                         )}

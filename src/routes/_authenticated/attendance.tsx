@@ -92,10 +92,41 @@ function AttendancePage() {
     canvas.height = video.videoHeight || 480;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    // mirror
+    
+    // Draw mirrored video
+    ctx.save();
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+
+    // Draw GPS/Name Watermark
+    const padding = 15;
+    const lineHeight = 20;
+    const fontSize = 14;
+    
+    const empName = employee?.full_name || "Unknown Employee";
+    const locText = location ? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` : "Location fetching...";
+    const addressText = location?.address || "";
+    const timeText = format(new Date(), "dd MMM yyyy, hh:mm a");
+
+    ctx.font = `${fontSize}px sans-serif`;
+    const lines = [empName, locText, addressText, timeText].filter(Boolean);
+    const textWidth = Math.max(...lines.map(l => ctx.measureText(l).width));
+    const boxHeight = lines.length * lineHeight + padding;
+    
+    // Draw semi-transparent background box at top center
+    const boxX = (canvas.width - textWidth - 10) / 2;
+    const boxY = padding;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+    ctx.fillRect(boxX - 5, boxY - 5, textWidth + 10, boxHeight + 5);
+
+    // Draw text
+    ctx.fillStyle = "#ffffff";
+    lines.forEach((line, index) => {
+      ctx.fillText(line, boxX, boxY + (index + 1) * lineHeight - 5);
+    });
+
     canvas.toBlob((blob) => {
       if (!blob) return;
       setSelfieBlob(blob);

@@ -35,6 +35,8 @@ function LogoutAttendancePage() {
   const [submitting, setSubmitting] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [now, setNow] = useState(new Date());
+  
+  const isAfter6PM = now.getHours() >= 18;
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -103,9 +105,41 @@ function LogoutAttendancePage() {
     canvas.height = video.videoHeight || 480;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    
+    // Draw mirrored video
+    ctx.save();
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+
+    // Draw GPS/Name Watermark
+    const padding = 15;
+    const lineHeight = 20;
+    const fontSize = 14;
+    
+    const empName = employee?.full_name || "Unknown Employee";
+    const locText = location ? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` : "Location fetching...";
+    const addressText = location?.address || "";
+    const timeText = format(new Date(), "dd MMM yyyy, hh:mm a");
+
+    ctx.font = `${fontSize}px sans-serif`;
+    const lines = [empName, locText, addressText, timeText].filter(Boolean);
+    const textWidth = Math.max(...lines.map(l => ctx.measureText(l).width));
+    const boxHeight = lines.length * lineHeight + padding;
+    
+    // Draw semi-transparent background box at top center
+    const boxX = (canvas.width - textWidth - 10) / 2;
+    const boxY = padding;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+    ctx.fillRect(boxX - 5, boxY - 5, textWidth + 10, boxHeight + 5);
+
+    // Draw text
+    ctx.fillStyle = "#ffffff";
+    lines.forEach((line, index) => {
+      ctx.fillText(line, boxX, boxY + (index + 1) * lineHeight - 5);
+    });
+
     canvas.toBlob((blob) => {
       if (!blob) return;
       setSelfieBlob(blob);
@@ -319,13 +353,18 @@ function LogoutAttendancePage() {
           </div>
         </Card>
 
+        {!isAfter6PM && (
+          <div className="bg-destructive/10 text-destructive p-4 rounded-md text-sm font-medium flex items-center justify-center text-center">
+            Sign out is only allowed after 6:00 PM. Please wait until your shift is over to log out.
+          </div>
+        )}
         <div className="flex justify-between gap-3">
-          <Button variant="ghost" onClick={skip} disabled={submitting || verifying}>
+          <Button variant="ghost" onClick={skip} disabled={submitting || verifying || !isAfter6PM}>
             Skip & sign out
           </Button>
           <Button
             onClick={submitLogout}
-            disabled={submitting || verifying || !selfieBlob || !location}
+            disabled={submitting || verifying || !selfieBlob || !location || !isAfter6PM}
             className="h-12 px-8 bg-gradient-primary shadow-elegant"
           >
             {submitting || verifying ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <LogOut className="w-4 h-4 mr-2" />} 

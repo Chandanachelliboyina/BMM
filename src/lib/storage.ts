@@ -35,3 +35,14 @@ export async function uploadDailyUpdateImage(userId: string, file: File | Blob, 
   if (error) throw error;
   return path;
 }
+
+export async function uploadActivityImage(userId: string, file: File | Blob, ext = "jpg"): Promise<string> {
+  const path = `${userId}/activity-${Date.now()}.${ext}`;
+  // Using daily-updates bucket for activities as a fallback if activities bucket is missing
+  const { error } = await supabase.storage.from("daily-updates").upload(path, file, {
+    contentType: file.type || "image/jpeg",
+    upsert: false,
+  });
+  if (error) throw error;
+  return path;
+}

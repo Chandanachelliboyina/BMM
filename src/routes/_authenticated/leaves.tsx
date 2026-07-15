@@ -26,20 +26,24 @@ function LeavesPage() {
   const [reason, setReason] = useState("");
   const [reportImage, setReportImage] = useState<File | null>(null);
 
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  const startYear = currentMonth >= 3 ? currentYear : currentYear - 1;
+  const endYear = startYear + 1;
+
   const { data: leaves, isLoading } = useQuery({
     queryKey: ["leaves"],
     queryFn: async () => {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error("Not authenticated");
-
-      const currentYear = new Date().getFullYear();
       
       const { data, error } = await supabase
         .from("leaves")
         .select("*")
         .eq("user_id", user.user.id)
-        .gte("leave_date", `${currentYear}-01-01`)
-        .lte("leave_date", `${currentYear}-12-31`)
+        .gte("leave_date", `${startYear}-04-01`)
+        .lte("leave_date", `${endYear}-03-31`)
         .order("leave_date", { ascending: false });
 
       if (error) throw error;
@@ -85,10 +89,8 @@ function LeavesPage() {
     submitMutation.mutate();
   };
 
-  // Calculations for Leave Balances (Year-to-Date)
-  // Employee gets 1 Casual and 1 Sick leave per month.
-  const currentMonth = new Date().getMonth() + 1; // 1-12
-  const totalEarnedYTD = currentMonth; // By this month, they have earned `currentMonth` leaves of each type.
+  // 12 months total, but 3 months are already over, so 9 leaves remaining for this year.
+  const totalLeaves = 9;
   
   let takenCasual = 0;
   let takenSick = 0;
@@ -100,8 +102,8 @@ function LeavesPage() {
     });
   }
 
-  const remainingCasual = Math.max(0, totalEarnedYTD - takenCasual);
-  const remainingSick = Math.max(0, totalEarnedYTD - takenSick);
+  const remainingCasual = Math.max(0, totalLeaves - takenCasual);
+  const remainingSick = Math.max(0, totalLeaves - takenSick);
 
   return (
     <AppShell title="Leave Management">
@@ -120,13 +122,13 @@ function LeavesPage() {
           <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900">
             <CardHeader className="pb-2">
               <CardTitle className="text-blue-800 dark:text-blue-300">Casual Leaves</CardTitle>
-              <CardDescription className="text-blue-600/80 dark:text-blue-400/80">Year to Date ({new Date().getFullYear()})</CardDescription>
+              <CardDescription className="text-blue-600/80 dark:text-blue-400/80">April {startYear} to March {endYear}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-4 text-center mt-2">
                 <div>
-                  <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">{totalEarnedYTD}</div>
-                  <div className="text-xs text-blue-700 dark:text-blue-400">Earned (YTD)</div>
+                  <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">{totalLeaves}</div>
+                  <div className="text-xs text-blue-700 dark:text-blue-400">Total</div>
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-red-600 dark:text-red-400">{takenCasual}</div>
@@ -143,13 +145,13 @@ function LeavesPage() {
           <Card className="bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900">
             <CardHeader className="pb-2">
               <CardTitle className="text-purple-800 dark:text-purple-300">Sick Leaves</CardTitle>
-              <CardDescription className="text-purple-600/80 dark:text-purple-400/80">Year to Date ({new Date().getFullYear()})</CardDescription>
+              <CardDescription className="text-purple-600/80 dark:text-purple-400/80">April {startYear} to March {endYear}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-4 text-center mt-2">
                 <div>
-                  <div className="text-2xl font-bold text-purple-900 dark:text-purple-100">{totalEarnedYTD}</div>
-                  <div className="text-xs text-purple-700 dark:text-purple-400">Earned (YTD)</div>
+                  <div className="text-2xl font-bold text-purple-900 dark:text-purple-100">{totalLeaves}</div>
+                  <div className="text-xs text-purple-700 dark:text-purple-400">Total</div>
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-red-600 dark:text-red-400">{takenSick}</div>
@@ -166,7 +168,7 @@ function LeavesPage() {
 
         <div className="flex items-start gap-2 text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
           <Info className="h-5 w-5 shrink-0 text-blue-500" />
-          <p>You accrue 1 Casual Leave and 1 Sick Leave every month. The "Earned (YTD)" value represents the total leaves accumulated from January to the current month.</p>
+          <p>Since 3 months of the financial year are already over, you have 9 Casual Leaves and 9 Sick Leaves remaining for the period of April {startYear} to March {endYear}.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

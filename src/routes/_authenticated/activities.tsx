@@ -200,6 +200,12 @@ function ActivitiesPage() {
   const [activeOfficeTab, setActiveOfficeTab] = useState("");
   const [officeDocData, setOfficeDocData] = useState<Record<string, Record<string, string>>>({});
   
+  const [governanceType, setGovernanceType] = useState("");
+  const [governanceOther, setGovernanceOther] = useState("");
+  
+  const [complianceType, setComplianceType] = useState("");
+  const [complianceOther, setComplianceOther] = useState("");
+  
   const [remarks, setRemarks] = useState("");
   const [activeTab, setActiveTab] = useState<string>("awarenessMeeting");
 
@@ -259,6 +265,8 @@ function ActivitiesPage() {
             return `  - ${fieldDef ? fieldDef.label : fieldKey}: ${val}`;
           }).join("\n");
         }).join("\n")}` : "",
+        governanceType ? `Governance\n- Activity: ${governanceType}${governanceType === "Others" ? `\n- Details: ${governanceOther || "N/A"}` : ""}` : "",
+        complianceType ? `Compliance\n- Activity: ${complianceType}${complianceType === "Others" ? `\n- Details: ${complianceOther || "N/A"}` : ""}` : "",
         remarks ? `General Remarks: ${remarks}` : ""
       ].filter(Boolean).join("\n\n");
 
@@ -349,6 +357,10 @@ function ActivitiesPage() {
       setStaffReviewPlace("");
       setOfficeDocData({});
       setActiveOfficeTab("");
+      setGovernanceType("");
+      setGovernanceOther("");
+      setComplianceType("");
+      setComplianceOther("");
       
       setRemarks("");
       setIsSubmitting(false);
@@ -380,6 +392,8 @@ function ActivitiesPage() {
     { id: "staffCapacity", label: "PARTICIPATED IN STAFF CAPACITY BUILDING" },
     { id: "staffReview", label: "PARTICIPATED IN MONTH STAFF REVIEW MEETING" },
     { id: "officeDoc", label: "ATTENDED OFFICE FOR DOCUMENTATION" },
+    { id: "governance", label: "GOVERNANCE" },
+    { id: "compliance", label: "COMPLIANCE" },
   ];
 
   return (
@@ -1044,6 +1058,74 @@ function ActivitiesPage() {
                               )}
                             </div>
                           ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === "governance" && (
+                    <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                      <div className="space-y-3">
+                        <Label>Select Governance Activity:</Label>
+                        <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+                          {[
+                            "Participated in Governance Body Meeting", 
+                            "updated Governance Body Registers", 
+                            "Letters Posted for Governance Body Members", 
+                            "Others"
+                          ].map((option) => (
+                            <Button 
+                              key={option}
+                              type="button" 
+                              variant={governanceType === option ? "default" : "secondary"}
+                              onClick={() => setGovernanceType(governanceType === option ? "" : option)}
+                              className="whitespace-normal h-auto min-h-[40px] text-left justify-start"
+                            >
+                              {option}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {governanceType === "Others" && (
+                        <div className="space-y-2 pt-4 border-t border-border mt-4 animate-in slide-in-from-top-2">
+                          <Label>Description for Others</Label>
+                          <Input 
+                            placeholder="Enter description..." 
+                            value={governanceOther} 
+                            onChange={(e) => setGovernanceOther(e.target.value)} 
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === "compliance" && (
+                    <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                      <div className="space-y-3">
+                        <Label>Select Compliance Type:</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {["EPF", "ESI", "PT", "Gratuaty", "Insurance", "Others"].map((option) => (
+                            <Button 
+                              key={option}
+                              type="button" 
+                              variant={complianceType === option ? "default" : "secondary"}
+                              onClick={() => setComplianceType(complianceType === option ? "" : option)}
+                            >
+                              {option}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {complianceType === "Others" && (
+                        <div className="space-y-2 pt-4 border-t border-border mt-4 animate-in slide-in-from-top-2">
+                          <Label>Description for Others</Label>
+                          <Input 
+                            placeholder="Enter description..." 
+                            value={complianceOther} 
+                            onChange={(e) => setComplianceOther(e.target.value)} 
+                          />
                         </div>
                       )}
                     </div>

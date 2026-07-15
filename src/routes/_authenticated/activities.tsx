@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { uploadActivityImage } from "@/lib/storage";
 import { Activity, Plus, Loader2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 export const Route = createFileRoute("/_authenticated/activities")({
   component: ActivitiesPage,
 });

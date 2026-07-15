@@ -8,9 +8,10 @@ export const Route = createFileRoute("/_authenticated/home")({
 });
 
 const SLIDES = [
-  "/BMM_IMAGE.webp",
   "/BMM_H.jpg",
-  "/BMM_T.jpg"
+  "/BMM_T.jpg",
+  "/BMM_NEW.jpg",
+  "/BMM_PIC.jpg"
 ];
 
 function HomePage() {

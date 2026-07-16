@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { getToken } from "@/lib/api";
 
 export const Route = createFileRoute("/")({
   component: IndexRedirect,
@@ -9,10 +9,8 @@ export const Route = createFileRoute("/")({
 function IndexRedirect() {
   const navigate = useNavigate();
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/attendance", replace: true });
-      else navigate({ to: "/auth/login", replace: true });
-    });
+    if (getToken()) navigate({ to: "/attendance", replace: true });
+    else navigate({ to: "/auth/login", replace: true });
   }, [navigate]);
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-hero">

@@ -1,32 +1,42 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
 from typing import Optional, List
 from motor.motor_asyncio import AsyncIOMotorClient
+from datetime import datetime, timedelta, timezone
 import os
 from dotenv import load_dotenv
 from bson import ObjectId
+import bcrypt
+import jwt as pyjwt
+import base64
 
-# Load environment variables from .env file
 load_dotenv()
 
 app = FastAPI(
     title="BMM Backend API",
-    description="Python FastAPI backend for Bheemabhai Mahila Mandali (BMM) App",
-    version="1.0.0"
+    description="FastAPI + MongoDB backend for Bheemabhai Mahila Mandali (BMM)",
+    version="2.0.0"
 )
 
-# Configure CORS so the frontend can communicate with the backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, change this to your frontend URL
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# MongoDB Configuration
+# ── Config ──────────────────────────────────────────────────────────────────
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+SECRET_KEY = os.getenv("JWT_SECRET", "bmm-super-secret-jwt-key-change-in-production")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_DAYS = 30
+
+bearer_scheme = HTTPBearer(auto_error=False)
+
+# ── DB ────────────────────────────────────────────────────────────────────────
 client = None
 db = None
 
@@ -34,90 +44,320 @@ db = None
 async def startup_db_client():
     global client, db
     try:
-        # Initialize MongoDB Async Client
         client = AsyncIOMotorClient(MONGO_URI)
-        # Select the database
         db = client.bmm_database
-        # Verify connection by pinging the server
-        await client.admin.command('ping')
-        print("Successfully connected to MongoDB Atlas!")
+        await client.admin.command("ping")
+        # Unique indexes
+        await db.employees.create_index("employee_id", unique=True)
+        await db.employees.create_index("email", unique=True)
+        await db.employees.create_index("mobile_number", unique=True)
+        await db.attendance.create_index([("employee_id", 1), ("login_date", 1)], unique=True)
+        print("✅ Connected to MongoDB Atlas")
     except Exception as e:
-        print(f"Failed to connect to MongoDB Atlas: {e}")
+        print(f"❌ MongoDB connection failed: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
     if client:
         client.close()
-        print("MongoDB connection closed.")
 
+# ── Helpers ──────────────────────────────────────────────────────────────────
+def hash_password(pwd: str) -> str:
+    return bcrypt.hashpw(pwd.encode(), bcrypt.gensalt()).decode()
 
-# --- Pydantic Models ---
-class ActivityModel(BaseModel):
-    user_id: str
-    date: str
-    villages_visited: Optional[int] = 0
-    village_names: Optional[str] = ""
-    meetings_conducted: Optional[str] = ""
-    remarks: Optional[str] = ""
+def verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    except Exception:
+        return False
 
-class ActivityResponseModel(ActivityModel):
-    id: str
+def create_token(data: dict) -> str:
+    payload = data.copy()
+    payload["exp"] = datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+    return pyjwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-# Helper function to parse ObjectId
-def activity_helper(activity) -> dict:
-    return {
-        "id": str(activity["_id"]),
-        "user_id": activity.get("user_id"),
-        "date": activity.get("date"),
-        "villages_visited": activity.get("villages_visited", 0),
-        "village_names": activity.get("village_names", ""),
-        "meetings_conducted": activity.get("meetings_conducted", ""),
-        "remarks": activity.get("remarks", "")
-    }
+async def get_current_employee(creds: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
+    if not creds:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = pyjwt.decode(creds.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        employee_id: str = payload.get("sub")
+        if not employee_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except pyjwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    emp = await db.employees.find_one({"employee_id": employee_id}, {"password_hash": 0})
+    if not emp:
+        raise HTTPException(status_code=401, detail="Employee not found")
+    emp["id"] = str(emp.pop("_id"))
+    return emp
 
-# --- Routes ---
+def clean_emp(emp: dict) -> dict:
+    emp = dict(emp)
+    emp.pop("password_hash", None)
+    if "_id" in emp:
+        emp["id"] = str(emp.pop("_id"))
+    return emp
+
+# ── Models ────────────────────────────────────────────────────────────────────
+class RegisterRequest(BaseModel):
+    employee_id: str
+    full_name: str
+    mobile_number: str
+    email: str
+    password: str
+    role: str
+    address: Optional[str] = None
+    village: Optional[str] = None
+    mandal: Optional[str] = None
+    district: Optional[str] = None
+    state: Optional[str] = None
+    pin_code: Optional[str] = None
+    gender: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    office_location: Optional[str] = None
+    department: Optional[str] = None
+    head: Optional[str] = None
+    donor_name: Optional[str] = None
+    target_villages: Optional[str] = None
+    target_mandals: Optional[str] = None
+    targets: Optional[str] = None
+    profile_photo_b64: Optional[str] = None  # base64 encoded photo
+
+class LoginRequest(BaseModel):
+    employee_id: str
+    password: str
+
+class UpdateProfileRequest(BaseModel):
+    email: Optional[str] = None
+    mobile_number: Optional[str] = None
+    address: Optional[str] = None
+    village: Optional[str] = None
+    head: Optional[str] = None
+    donor_name: Optional[str] = None
+    department: Optional[str] = None
+    target_villages: Optional[str] = None
+    target_mandals: Optional[str] = None
+    targets: Optional[str] = None
+
+class CheckinRequest(BaseModel):
+    employee_name: str
+    role: str
+    gps_latitude: float
+    gps_longitude: float
+    full_address: Optional[str] = None
+    selfie_b64: Optional[str] = None  # base64 encoded selfie
+
+class CheckoutRequest(BaseModel):
+    gps_latitude: float
+    gps_longitude: float
+    full_address: Optional[str] = None
+    selfie_b64: Optional[str] = None
+
+# ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to BMM Backend API. Server is running!"}
+    return {"message": "BMM Backend API v2.0 — MongoDB Connected ✅"}
 
 @app.get("/api/health")
-async def health_check():
-    """Check if database is connected and responsive"""
+async def health():
     if db is None:
-        raise HTTPException(status_code=503, detail="Database connection is not initialized")
-    
+        raise HTTPException(status_code=503, detail="DB not initialized")
     try:
-        await client.admin.command('ping')
+        await client.admin.command("ping")
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
 
-@app.post("/api/activities", response_model=ActivityResponseModel, status_code=201)
-async def create_activity(activity: ActivityModel):
-    """Create a new activity log"""
-    try:
-        collection = db.activities
-        new_activity = await collection.insert_one(activity.dict())
-        created_activity = await collection.find_one({"_id": new_activity.inserted_id})
-        return activity_helper(created_activity)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# ── Auth ──────────────────────────────────────────────────────────────────────
 
-@app.get("/api/activities", response_model=List[ActivityResponseModel])
-async def get_activities():
-    """Retrieve all activities"""
-    try:
-        collection = db.activities
-        activities = []
-        async for activity in collection.find():
-            activities.append(activity_helper(activity))
-        return activities
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.post("/api/auth/register", status_code=201)
+async def register(req: RegisterRequest):
+    emp_id = req.employee_id.strip().upper()
 
+    # Check duplicates
+    if await db.employees.find_one({"employee_id": emp_id}):
+        raise HTTPException(status_code=400, detail="Employee ID already taken")
+    if await db.employees.find_one({"email": req.email.strip().lower()}):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    if await db.employees.find_one({"mobile_number": req.mobile_number.strip()}):
+        raise HTTPException(status_code=400, detail="Mobile number already registered")
+
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "employee_id": emp_id,
+        "full_name": req.full_name.strip(),
+        "mobile_number": req.mobile_number.strip(),
+        "email": req.email.strip().lower(),
+        "password_hash": hash_password(req.password),
+        "role": req.role,
+        "address": req.address or None,
+        "village": req.village or None,
+        "mandal": req.mandal or None,
+        "district": req.district or None,
+        "state": req.state or None,
+        "pin_code": req.pin_code or None,
+        "gender": req.gender or None,
+        "date_of_birth": req.date_of_birth or None,
+        "office_location": req.office_location or None,
+        "department": req.department or None,
+        "head": req.head or None,
+        "donor_name": req.donor_name or None,
+        "target_villages": req.target_villages or None,
+        "target_mandals": req.target_mandals or None,
+        "targets": req.targets or None,
+        "profile_photo_b64": req.profile_photo_b64 or None,
+        "joining_date": now[:10],
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.employees.insert_one(doc)
+    token = create_token({"sub": emp_id})
+    return {"employee_id": emp_id, "token": token, "message": "Registration successful"}
+
+@app.post("/api/auth/login")
+async def login(req: LoginRequest):
+    emp_id = req.employee_id.strip().upper()
+    emp = await db.employees.find_one({"employee_id": emp_id})
+    if not emp:
+        raise HTTPException(status_code=401, detail="Invalid Employee ID or password")
+    if not verify_password(req.password, emp["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid Employee ID or password")
+    token = create_token({"sub": emp_id})
+    return {"token": token, "employee_id": emp_id}
+
+@app.get("/api/auth/me")
+async def me(current: dict = Depends(get_current_employee)):
+    return current
+
+# ── Employees ─────────────────────────────────────────────────────────────────
+
+@app.put("/api/employees/me")
+async def update_profile(req: UpdateProfileRequest, current: dict = Depends(get_current_employee)):
+    updates: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if req.email is not None:
+        updates["email"] = req.email.strip().lower()
+    if req.mobile_number is not None:
+        updates["mobile_number"] = req.mobile_number.strip()
+    if req.address is not None:
+        updates["address"] = req.address or None
+    if req.village is not None:
+        updates["village"] = req.village or None
+    if req.head is not None:
+        updates["head"] = req.head or None
+    if req.donor_name is not None:
+        updates["donor_name"] = req.donor_name or None
+    if req.department is not None:
+        updates["department"] = req.department or None
+    if req.target_villages is not None:
+        updates["target_villages"] = req.target_villages or None
+    if req.target_mandals is not None:
+        updates["target_mandals"] = req.target_mandals or None
+    if req.targets is not None:
+        updates["targets"] = req.targets or None
+    await db.employees.update_one(
+        {"employee_id": current["employee_id"]},
+        {"$set": updates}
+    )
+    updated = await db.employees.find_one({"employee_id": current["employee_id"]}, {"password_hash": 0})
+    return clean_emp(updated)
+
+@app.post("/api/employees/me/photo")
+async def update_photo(photo: UploadFile = File(...), current: dict = Depends(get_current_employee)):
+    data = await photo.read()
+    b64 = base64.b64encode(data).decode()
+    content_type = photo.content_type or "image/jpeg"
+    b64_data_url = f"data:{content_type};base64,{b64}"
+    await db.employees.update_one(
+        {"employee_id": current["employee_id"]},
+        {"$set": {"profile_photo_b64": b64_data_url, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"profile_photo_b64": b64_data_url}
+
+@app.get("/api/employees/count")
+async def employee_count(current: dict = Depends(get_current_employee)):
+    count = await db.employees.count_documents({})
+    return {"count": count}
+
+# ── Attendance ─────────────────────────────────────────────────────────────────
+
+@app.post("/api/attendance/checkin", status_code=201)
+async def checkin(req: CheckinRequest, current: dict = Depends(get_current_employee)):
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    existing = await db.attendance.find_one({"employee_id": current["employee_id"], "login_date": today})
+    if existing:
+        raise HTTPException(status_code=409, detail="Attendance already marked for today")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "employee_id": current["employee_id"],
+        "employee_name": req.employee_name,
+        "role": req.role,
+        "login_date": today,
+        "login_time": now_iso,
+        "gps_latitude": req.gps_latitude,
+        "gps_longitude": req.gps_longitude,
+        "full_address": req.full_address,
+        "selfie_b64": req.selfie_b64 or None,
+        "logout_time": None,
+        "logout_selfie_b64": None,
+        "logout_gps_latitude": None,
+        "logout_gps_longitude": None,
+        "logout_full_address": None,
+        "attendance_status": "Present",
+        "created_at": now_iso,
+    }
+    result = await db.attendance.insert_one(doc)
+    return {"id": str(result.inserted_id), "login_time": now_iso, "message": "Attendance marked"}
+
+@app.put("/api/attendance/checkout")
+async def checkout(req: CheckoutRequest, current: dict = Depends(get_current_employee)):
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    record = await db.attendance.find_one({"employee_id": current["employee_id"], "login_date": today})
+    if not record:
+        raise HTTPException(status_code=404, detail="No check-in found for today")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.attendance.update_one(
+        {"employee_id": current["employee_id"], "login_date": today},
+        {"$set": {
+            "logout_time": now_iso,
+            "logout_selfie_b64": req.selfie_b64 or None,
+            "logout_gps_latitude": req.gps_latitude,
+            "logout_gps_longitude": req.gps_longitude,
+            "logout_full_address": req.full_address,
+        }}
+    )
+    return {"logout_time": now_iso, "message": "Logout recorded"}
+
+@app.get("/api/attendance/today")
+async def attendance_today(current: dict = Depends(get_current_employee)):
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    record = await db.attendance.find_one({"employee_id": current["employee_id"], "login_date": today})
+    if not record:
+        return None
+    record["id"] = str(record.pop("_id"))
+    return record
+
+@app.get("/api/attendance/history")
+async def attendance_history(current: dict = Depends(get_current_employee)):
+    records = []
+    async for r in db.attendance.find(
+        {"employee_id": current["employee_id"]},
+        sort=[("login_date", -1)]
+    ):
+        r["id"] = str(r.pop("_id"))
+        records.append(r)
+    return records
+
+@app.get("/api/attendance/all")
+async def all_attendance(current: dict = Depends(get_current_employee)):
+    """All attendance records (for admin/reports)"""
+    records = []
+    async for r in db.attendance.find({}, sort=[("login_date", -1)]):
+        r["id"] = str(r.pop("_id"))
+        records.append(r)
+    return records
 
 if __name__ == "__main__":
     import uvicorn
-    # Run the FastAPI server
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

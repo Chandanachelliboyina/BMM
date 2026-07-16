@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { Download, Search, FileText, FileSpreadsheet, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { apiAttendanceHistory } from "@/lib/api";
 import { useEmployee } from "@/hooks/useEmployee";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
@@ -30,17 +30,10 @@ function HistoryPage() {
     if (!employee) return;
     (async () => {
       setFetching(true);
-      // Fetch user's own attendance records (due to RLS)
-      const { data } = await supabase
-        .from("attendance")
-        .select("*")
-        .eq("user_id", employee.user_id)
-        .order("login_date", { ascending: false });
-        
-      if (data) {
-        setRecords(data);
-        setFiltered(data);
-      }
+      try {
+        const data = await apiAttendanceHistory();
+        if (data) { setRecords(data); setFiltered(data); }
+      } catch { /* ignore */ }
       setFetching(false);
     })();
   }, [employee]);

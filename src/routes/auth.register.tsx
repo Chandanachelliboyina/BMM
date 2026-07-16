@@ -3,8 +3,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Building2, Loader2, Upload, CheckCircle2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { uploadProfilePhoto } from "@/lib/storage";
+import { apiRegisterWithPhoto, setToken } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -89,66 +88,41 @@ function RegisterPage() {
     }
     setLoading(true);
     try {
-      // 1. Sign up (email confirmation must be OFF in project auth settings for smooth UX)
-      const { data: signUp, error: signErr } = await supabase.auth.signUp({
-        email: form.email,
-        password: form.password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/attendance`,
-          data: { full_name: form.full_name },
+      const res = await apiRegisterWithPhoto(
+        {
+          employee_id: form.employee_id.trim().toUpperCase(),
+          full_name: form.full_name.trim(),
+          mobile_number: form.mobile_number.trim(),
+          email: form.email.trim().toLowerCase(),
+          password: form.password,
+          role: form.role,
+          address: form.address || null,
+          village: form.village || null,
+          mandal: form.mandal || null,
+          district: form.district || null,
+          state: form.state || null,
+          pin_code: form.pin_code || null,
+          gender: form.gender || null,
+          date_of_birth: form.date_of_birth || null,
+          office_location: form.office_location || null,
+          department: form.department || null,
+          head: form.head || null,
+          donor_name: form.donor_name || null,
+          target_villages: form.target_villages || null,
+          target_mandals: form.target_mandals || null,
+          targets: form.targets || null,
         },
-      });
-      if (signErr) throw signErr;
-      const userId = signUp.user?.id;
-      if (!userId) throw new Error("Unable to create account");
-
-      // 2. Upload profile photo (required — used as reference for attendance selfies)
-      let photoPath: string | null = null;
-      try {
-        const ext = (photoFile.name.split(".").pop() ?? "jpg").toLowerCase();
-        photoPath = await uploadProfilePhoto(userId, photoFile, ext);
-      } catch (err) {
-        console.warn("Photo upload failed", err);
-      }
-
-      // 3. Insert employee row (trigger assigns employee_id)
-      const { data: emp, error: insErr } = await supabase.from("employees").insert({
-        user_id: userId,
-        employee_id: form.employee_id.trim().toUpperCase(),
-        full_name: form.full_name.trim(),
-        mobile_number: form.mobile_number.trim(),
-        email: form.email.trim().toLowerCase(),
-        address: form.address || null,
-        village: form.village || null,
-        mandal: form.mandal || null,
-        district: form.district || null,
-        state: form.state || null,
-        pin_code: form.pin_code || null,
-        gender: form.gender || null,
-        date_of_birth: form.date_of_birth || null,
-        role: form.role,
-        office_location: form.office_location || null,
-        head: form.head || null,
-        donor_name: form.donor_name || null,
-        department: form.department || null,
-        target_villages: form.target_villages || null,
-        target_mandals: form.target_mandals || null,
-        targets: form.targets || null,
-        profile_photo: photoPath,
-      }).select("employee_id").single();
-
-      if (insErr) {
-        if (insErr.message.toLowerCase().includes("employee_id")) toast.error("This Employee ID is already taken");
-        else if (insErr.message.toLowerCase().includes("mobile")) toast.error("This mobile number is already registered");
-        else if (insErr.message.toLowerCase().includes("email")) toast.error("This email is already registered");
-        else toast.error(insErr.message);
-        return;
-      }
-
-      setSuccess(emp.employee_id);
-      toast.success(`Registered! Your Employee ID is ${emp.employee_id}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Registration failed");
+        photoFile
+      );
+      setToken(res.token);
+      setSuccess(res.employee_id);
+      toast.success(`Registered! Your Employee ID is ${res.employee_id}`);
+    } catch (err: any) {
+      const msg: string = err?.message || "Registration failed";
+      if (msg.toLowerCase().includes("employee id")) toast.error("This Employee ID is already taken");
+      else if (msg.toLowerCase().includes("mobile")) toast.error("This mobile number is already registered");
+      else if (msg.toLowerCase().includes("email")) toast.error("This email is already registered");
+      else toast.error(msg);
     } finally {
       setLoading(false);
     }

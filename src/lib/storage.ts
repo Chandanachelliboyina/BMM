@@ -1,48 +1,58 @@
-import { supabase } from "@/integrations/supabase/client";
+// Storage helpers — now uses MongoDB via backend API (base64)
+// These are kept for compatibility but delegate to the API client
 
-export async function uploadProfilePhoto(userId: string, file: File | Blob, ext = "jpg"): Promise<string> {
-  const path = `${userId}/profile-${Date.now()}.${ext}`;
-  const { error } = await supabase.storage.from("profile-photos").upload(path, file, {
-    upsert: true,
-    contentType: file.type || "image/jpeg",
-  });
-  if (error) throw error;
-  return path;
+import { apiUpdatePhoto } from "@/lib/api";
+
+/** Upload profile photo via backend API — returns base64 data URL */
+export async function uploadProfilePhoto(
+  _userId: string,
+  file: File,
+  _ext = "jpg"
+): Promise<string> {
+  const res = await apiUpdatePhoto(file);
+  return res.profile_photo_b64;
 }
 
-export async function uploadSelfie(userId: string, blob: Blob): Promise<string> {
-  const path = `${userId}/selfie-${Date.now()}.jpg`;
-  const { error } = await supabase.storage.from("attendance-selfies").upload(path, blob, {
-    contentType: "image/jpeg",
-    upsert: false,
+/** Convert selfie blob to base64 data URL (stored in MongoDB via checkin/checkout) */
+export async function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
   });
-  if (error) throw error;
-  return path;
 }
 
-export async function getSignedUrl(bucket: string, path: string, expiresIn = 3600): Promise<string | null> {
-  if (!path) return null;
-  const { data } = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn);
-  return data?.signedUrl ?? null;
+/** Upload selfie — returns base64 data URL (passed directly in attendance API) */
+export async function uploadSelfie(_userId: string, blob: Blob): Promise<string> {
+  return blobToDataUrl(blob);
 }
 
-export async function uploadDailyUpdateImage(userId: string, file: File | Blob, index: number, ext = "jpg"): Promise<string> {
-  const path = `${userId}/update-${Date.now()}-${index}.${ext}`;
-  const { error } = await supabase.storage.from("daily-updates").upload(path, file, {
-    contentType: file.type || "image/jpeg",
-    upsert: false,
-  });
-  if (error) throw error;
-  return path;
+/** Get signed URL — with MongoDB we store base64 data URLs directly, just return as-is */
+export async function getSignedUrl(
+  _bucket: string,
+  pathOrDataUrl: string,
+  _expiresIn = 3600
+): Promise<string | null> {
+  if (!pathOrDataUrl) return null;
+  return pathOrDataUrl; // Already a base64 data URL or URL
 }
 
-export async function uploadActivityImage(userId: string, file: File | Blob, ext = "jpg"): Promise<string> {
-  const path = `${userId}/activity-${Date.now()}.${ext}`;
-  // Using daily-updates bucket for activities as a fallback if activities bucket is missing
-  const { error } = await supabase.storage.from("daily-updates").upload(path, file, {
-    contentType: file.type || "image/jpeg",
-    upsert: false,
-  });
-  if (error) throw error;
-  return path;
+/** Upload daily update image — returns base64 data URL */
+export async function uploadDailyUpdateImage(
+  _userId: string,
+  file: File | Blob,
+  _index: number,
+  _ext = "jpg"
+): Promise<string> {
+  return blobToDataUrl(file);
+}
+
+/** Upload activity image — returns base64 data URL */
+export async function uploadActivityImage(
+  _userId: string,
+  file: File | Blob,
+  _ext = "jpg"
+): Promise<string> {
+  return blobToDataUrl(file);
 }

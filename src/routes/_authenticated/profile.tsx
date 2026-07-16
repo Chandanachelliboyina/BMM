@@ -2,9 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Upload, Mail, Phone, MapPin, Building2, IdCard, Briefcase, Edit2, X } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { apiUpdateProfile, apiUpdatePhoto } from "@/lib/api";
 import { useEmployee } from "@/hooks/useEmployee";
-import { uploadProfilePhoto } from "@/lib/storage";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -50,25 +49,26 @@ function ProfilePage() {
   const save = async () => {
     if (!employee) return;
     setSaving(true);
-    const { error } = await supabase.from("employees").update({
-      email: form.email.trim().toLowerCase(),
-      mobile_number: form.mobile_number.trim(),
-      address: form.address || null,
-      village: form.village || null,
-      head: form.head || null,
-      donor_name: form.donor_name || null,
-      department: form.department || null,
-      target_villages: form.target_villages || null,
-      target_mandals: form.target_mandals || null,
-      targets: form.targets || null,
-    }).eq("user_id", employee.user_id);
-    setSaving(false);
-    if (error) toast.error(error.message);
-    else { 
-      toast.success("Profile updated"); 
+    try {
+      await apiUpdateProfile({
+        email: form.email.trim().toLowerCase(),
+        mobile_number: form.mobile_number.trim(),
+        address: form.address || undefined,
+        village: form.village || undefined,
+        head: form.head || undefined,
+        donor_name: form.donor_name || undefined,
+        department: form.department || undefined,
+        target_villages: form.target_villages || undefined,
+        target_mandals: form.target_mandals || undefined,
+        targets: form.targets || undefined,
+      });
+      toast.success("Profile updated");
       setIsEditing(false);
-      refresh(); 
+      refresh();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update profile");
     }
+    setSaving(false);
   };
 
   const cancelEdit = () => {
@@ -93,9 +93,7 @@ function ProfilePage() {
     if (!file || !employee) return;
     if (file.size > 5 * 1024 * 1024) { toast.error("Max 5MB"); return; }
     try {
-      const ext = (file.name.split(".").pop() ?? "jpg").toLowerCase();
-      const path = await uploadProfilePhoto(employee.user_id, file, ext);
-      await supabase.from("employees").update({ profile_photo: path }).eq("user_id", employee.user_id);
+      await apiUpdatePhoto(file);
       toast.success("Photo updated");
       refresh();
     } catch (err) {

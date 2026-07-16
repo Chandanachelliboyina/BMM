@@ -2,9 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { CalendarCheck, CalendarX2, Clock, TrendingUp, ClipboardList, Activity, User } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { apiAttendanceHistory, apiEmployeeCount } from "@/lib/api";
 import { useEmployee } from "@/hooks/useEmployee";
-import { getSignedUrl } from "@/lib/storage";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -31,22 +30,15 @@ function DashboardPage() {
   useEffect(() => {
     if (!employee) return;
     (async () => {
-      const { data } = await supabase
-        .from("attendance")
-        .select("*")
-        .eq("user_id", employee.user_id)
-        .order("login_date", { ascending: false });
-        
-      const { count: totalEmp } = await supabase
-        .from("employees")
-        .select("*", { count: 'exact', head: true });
+      const data = await apiAttendanceHistory();
+      const totalEmp = await apiEmployeeCount();
 
       const present = data?.length ?? 0;
       const today = format(new Date(), "yyyy-MM-dd");
       const todayRow = data?.find((r) => r.login_date === today);
-      const joined = employee.joining_date ? new Date(employee.joining_date) : new Date(employee.created_at);
+      const joined = employee.joining_date ? new Date(employee.joining_date) : new Date(employee.created_at || Date.now());
       const daysSince = Math.max(1, Math.ceil((Date.now() - joined.getTime()) / (1000 * 60 * 60 * 24)));
-      
+
       setStats({
         totalOrgEmployees: totalEmp || 0,
         present,
@@ -58,11 +50,7 @@ function DashboardPage() {
 
       if (data && data.length > 0) {
         const latest = data[0];
-        let selfie = null;
-        if (latest.selfie_image) {
-          selfie = await getSignedUrl("attendance-selfies", latest.selfie_image);
-        }
-        setLatestCard({ ...latest, signedSelfie: selfie });
+        setLatestCard({ ...latest, signedSelfie: latest.selfie_b64 ?? null });
       }
     })();
   }, [employee]);

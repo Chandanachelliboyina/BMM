@@ -3,9 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { Camera, MapPin, Clock, CheckCircle2, Loader2, RefreshCw, Building2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useEmployee } from "@/hooks/useEmployee";
-import { uploadSelfie, getSignedUrl } from "@/lib/storage";
+import { apiCheckin, apiAttendanceToday, type AttendanceRecord } from "@/lib/api";
 import { compareFaces, loadFaceModels } from "@/lib/face-recognition";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -37,26 +36,18 @@ function AttendancePage() {
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
-    loadFaceModels().catch(console.error); // Preload models
+    loadFaceModels().catch(console.error);
     return () => clearInterval(t);
   }, []);
 
   // Check if today's attendance already exists
   useEffect(() => {
     if (!employee) return;
-    (async () => {
-      const today = format(new Date(), "yyyy-MM-dd");
-      const { data } = await supabase
-        .from("attendance")
-        .select("login_time, selfie_image")
-        .eq("user_id", employee.user_id)
-        .eq("login_date", today)
-        .maybeSingle();
+    apiAttendanceToday().then((data: AttendanceRecord | null) => {
       if (data) {
-        const signed = data.selfie_image ? await getSignedUrl("attendance-selfies", data.selfie_image) : null;
-        setAlreadyMarked({ time: data.login_time, selfie: signed });
+        setAlreadyMarked({ time: data.login_time, selfie: data.selfie_b64 ?? null });
       }
-    })();
+    });
   }, [employee]);
 
   const startCamera = useCallback(async () => {
@@ -92,19 +83,16 @@ function AttendancePage() {
     canvas.height = video.videoHeight || 480;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    
-    // Draw mirrored video
+
     ctx.save();
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     ctx.restore();
 
-    // Draw GPS/Name Watermark
     const padding = 15;
     const lineHeight = 20;
     const fontSize = 14;
-    
     const empName = employee?.full_name || "Unknown Employee";
     const locText = location ? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` : "Location fetching...";
     const addressText = location?.address || "";
@@ -112,16 +100,12 @@ function AttendancePage() {
 
     ctx.font = `${fontSize}px sans-serif`;
     const lines = [empName, locText, addressText, timeText].filter(Boolean);
-    const textWidth = Math.max(...lines.map(l => ctx.measureText(l).width));
+    const textWidth = Math.max(...lines.map((l) => ctx.measureText(l).width));
     const boxHeight = lines.length * lineHeight + padding;
-    
-    // Draw semi-transparent background box at top center
     const boxX = (canvas.width - textWidth - 10) / 2;
     const boxY = padding;
     ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
     ctx.fillRect(boxX - 5, boxY - 5, textWidth + 10, boxHeight + 5);
-
-    // Draw text
     ctx.fillStyle = "#ffffff";
     lines.forEach((line, index) => {
       ctx.fillText(line, boxX, boxY + (index + 1) * lineHeight - 5);
@@ -143,10 +127,7 @@ function AttendancePage() {
 
   const captureLocation = useCallback(() => {
     setLocError(null);
-    if (!navigator.geolocation) {
-      setLocError("Geolocation not supported");
-      return;
-    }
+    if (!navigator.geolocation) { setLocError("Geolocation not supported"); return; }
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const lat = pos.coords.latitude;
@@ -154,19 +135,12 @@ function AttendancePage() {
         let address: string | undefined;
         try {
           const key = import.meta.env.VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY;
-          // Reverse geocoding via public URL — falls back gracefully if the key
-          // doesn't allow it. The map itself always renders via embed.
           const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${key}`);
-          if (r.ok) {
-            const j = await r.json();
-            address = j?.results?.[0]?.formatted_address;
-          }
+          if (r.ok) { const j = await r.json(); address = j?.results?.[0]?.formatted_address; }
         } catch { /* ignore */ }
         setLocation({ lat, lng, address });
       },
-      (err) => {
-        setLocError(err.message || "Unable to get location");
-      },
+      (err) => setLocError(err.message || "Unable to get location"),
       { enableHighAccuracy: true, timeout: 15000 },
     );
   }, []);
@@ -177,56 +151,45 @@ function AttendancePage() {
     if (!employee) return;
     if (!selfieBlob) { toast.error("Please capture your selfie"); return; }
     if (!location) { toast.error("Waiting for location — allow location access"); return; }
-    
+
     setVerifying(true);
-    
-    // 1. Face Verification
+
     if (!photoUrl) {
       toast.error("You don't have a profile photo. Please upload one in your profile first.");
       setVerifying(false);
       return;
     }
-    
-    const video = videoRef.current;
-    // We need an image element or video to compare. We have the blob, let's create an image from it to be safe
-    // because video is already stopped.
+
     const capturedImg = new Image();
     capturedImg.src = selfieUrl!;
     await new Promise((res) => { capturedImg.onload = res; });
-    
+
     const result = await compareFaces(capturedImg, photoUrl);
-    
     if (!result.match) {
-      toast.error(result.error || `Face verification failed. Please try again. Distance: ${result.distance.toFixed(2)}`);
+      toast.error(result.error || `Face verification failed. Distance: ${result.distance.toFixed(2)}`);
       setVerifying(false);
       return;
     }
-    
     toast.success(`Face matched! Welcome, ${employee.full_name}`);
 
     setSubmitting(true);
     try {
-      const selfiePath = await uploadSelfie(employee.user_id, selfieBlob);
-      const { error } = await supabase.from("attendance").insert({
-        user_id: employee.user_id,
-        employee_id: employee.employee_id,
+      await apiCheckin({
         employee_name: employee.full_name,
         role: employee.role,
-        selfie_image: selfiePath,
         gps_latitude: location.lat,
         gps_longitude: location.lng,
         full_address: location.address ?? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`,
-        attendance_status: "Present",
+        selfieBlob,
       });
-      if (error) {
-        if (error.code === "23505") toast.error("Attendance already marked for today");
-        else toast.error(error.message);
-        return;
-      }
       toast.success("Attendance marked successfully");
       setTimeout(() => navigate({ to: "/dashboard" }), 700);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to mark attendance");
+    } catch (err: any) {
+      if (err?.message?.includes("409") || err?.message?.toLowerCase().includes("already")) {
+        toast.error("Attendance already marked for today");
+      } else {
+        toast.error(err instanceof Error ? err.message : "Failed to mark attendance");
+      }
     } finally {
       setSubmitting(false);
       setVerifying(false);
@@ -292,7 +255,6 @@ function AttendancePage() {
           </Card>
         ) : (
           <div className="grid lg:grid-cols-2 gap-6">
-            {/* Selfie */}
             <Card className="p-5 shadow-card">
               <div className="flex items-center gap-2 mb-4">
                 <Camera className="w-5 h-5 text-primary" />
@@ -301,7 +263,7 @@ function AttendancePage() {
               <p className="text-sm text-muted-foreground mb-4">
                 Please ensure your face is clearly visible to verify your identity.
               </p>
-              
+
               <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 mb-4 flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground">Signing in as</p>
@@ -309,9 +271,7 @@ function AttendancePage() {
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-muted-foreground">Location</p>
-                  <p className="font-medium text-sm max-w-[200px] truncate" title={location?.address || "Fetching..."}>
-                    {location?.address || "Fetching..."}
-                  </p>
+                  <p className="font-medium text-sm max-w-[200px] truncate">{location?.address || "Fetching..."}</p>
                 </div>
               </div>
 
@@ -358,7 +318,6 @@ function AttendancePage() {
               </div>
             </Card>
 
-            {/* Location + time */}
             <Card className="p-5 shadow-card">
               <div className="flex items-center gap-2 mb-4">
                 <MapPin className="w-5 h-5 text-primary" />
@@ -399,7 +358,7 @@ function AttendancePage() {
               disabled={submitting || verifying || !selfieBlob || !location}
               className="h-12 px-8 bg-gradient-primary shadow-elegant"
             >
-              {submitting || verifying ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />} 
+              {submitting || verifying ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
               {verifying ? "Verifying Face..." : submitting ? "Submitting..." : "Mark Attendance"}
             </Button>
           </div>

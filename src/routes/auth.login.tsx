@@ -1,8 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Building2, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { Loader2 } from "lucide-react";
+import { apiLogin, setToken } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,26 +33,16 @@ function LoginPage() {
     }
     setLoading(true);
     try {
-      const { data: email, error: rpcErr } = await supabase.rpc("get_login_email", {
-        p_employee_id: employeeId.trim().toUpperCase(),
-      });
-      if (rpcErr) throw rpcErr;
-      if (!email) {
-        toast.error("Invalid Employee ID");
-        return;
-      }
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        toast.error(error.message || "Invalid credentials");
-        return;
-      }
+      const res = await apiLogin(employeeId.trim().toUpperCase(), password);
+      setToken(res.token);
       if (remember && typeof window !== "undefined") {
         localStorage.setItem("ngo_last_employee_id", employeeId.trim().toUpperCase());
       }
       toast.success("Signed in successfully");
       navigate({ to: "/attendance", replace: true });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Sign in failed");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || "Sign in failed");
     } finally {
       setLoading(false);
     }

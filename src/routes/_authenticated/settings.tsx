@@ -7,7 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { apiMe } from "@/lib/api";
 import { useTheme } from "@/components/ThemeProvider";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -24,17 +24,11 @@ function SettingsPage() {
   const handlePasswordReset = async () => {
     setResetting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user?.email) throw new Error("No email found for this user");
-      
-      const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
-        redirectTo: window.location.origin + "/auth/reset-password",
-      });
-      
-      if (error) throw error;
-      toast.success("Password reset email sent! Check your inbox.");
+      const emp = await apiMe();
+      if (!emp?.email) throw new Error("Could not retrieve your email");
+      toast.info(`Please contact your BMM administrator to reset the password for ${emp.email}.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to send reset email");
+      toast.error(error instanceof Error ? error.message : "Failed");
     } finally {
       setResetting(false);
     }

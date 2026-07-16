@@ -3,9 +3,8 @@ import { useState, useRef, useEffect } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Camera, ImagePlus, Loader2, Send, X, ClipboardList, ImageIcon } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { getToken } from "@/lib/api";
 import { useEmployee } from "@/hooks/useEmployee";
-import { uploadDailyUpdateImage, getSignedUrl } from "@/lib/storage";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,23 +40,19 @@ function UpdatesPage() {
   const fetchHistory = async () => {
     if (!employee) return;
     setFetchingHistory(true);
-    const { data, error } = await supabase
-      .from("daily_updates")
-      .select("*")
-      .eq("user_id", employee.user_id)
-      .order("created_at", { ascending: false })
-      .limit(10);
-      
-    if (data) {
-      // Resolve signed URLs for images
-      const populated = await Promise.all(data.map(async (record) => {
-        const urls = await Promise.all((record.images || []).map((path: string) => 
-          getSignedUrl("daily-updates", path)
-        ));
-        return { ...record, signedUrls: urls.filter(Boolean) as string[] };
-      }));
-      setHistory(populated);
-    }
+    try {
+      const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+      const token = getToken();
+      const res = await fetch(`${BASE}/api/daily-updates`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        // images are now base64 data URLs — use directly
+        const populated = data.map((r: any) => ({ ...r, signedUrls: r.images || [] }));
+        setHistory(populated);
+      }
+    } catch { /* ignore */ }
     setFetchingHistory(false);
   };
 
@@ -113,24 +108,33 @@ function UpdatesPage() {
 
     setSubmitting(true);
     try {
-      // 1. Upload all images concurrently
-      const uploadPromises = selectedFiles.map((file, i) => {
-        const ext = (file.name.split(".").pop() ?? "jpg").toLowerCase();
-        return uploadDailyUpdateImage(employee.user_id, file, i, ext);
+      // 1. Convert all images to base64 data URLs
+      const uploadPromises = selectedFiles.map((file) => {
+        return new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
       });
       
       const uploadedPaths = await Promise.all(uploadPromises);
 
-      // 2. Save record to DB
-      const { error } = await supabase.from("daily_updates").insert({
-        user_id: employee.user_id,
-        employee_id: employee.employee_id,
-        employee_name: employee.full_name,
-        notes: notes.trim() || null,
-        images: uploadedPaths,
+      // 2. Save record to DB via API
+      const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+      const token = getToken();
+      const res = await fetch(`${BASE}/api/daily-updates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          employee_id: employee.employee_id,
+          employee_name: employee.full_name,
+          notes: notes.trim() || null,
+          images: uploadedPaths,
+        }),
       });
 
-      if (error) throw error;
+      if (!res.ok) throw new Error("Failed to save update");
       
       toast.success("Daily update submitted successfully!");
       

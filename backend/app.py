@@ -358,6 +358,127 @@ async def all_attendance(current: dict = Depends(get_current_employee)):
         records.append(r)
     return records
 
+# ── Activities ────────────────────────────────────────────────────────────────
+
+class ActivityIn(BaseModel):
+    employee_id: Optional[str] = None
+    date: str
+    meetings_conducted: Optional[str] = None
+    remarks: Optional[str] = None
+
+@app.post("/api/activities", status_code=201)
+async def create_activity(req: ActivityIn, current: dict = Depends(get_current_employee)):
+    now_iso = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "employee_id": req.employee_id or current["employee_id"],
+        "date": req.date,
+        "meetings_conducted": req.meetings_conducted or "",
+        "remarks": req.remarks or "",
+        "created_at": now_iso,
+    }
+    result = await db.activities.insert_one(doc)
+    return {"id": str(result.inserted_id)}
+
+@app.get("/api/activities")
+async def get_activities(current: dict = Depends(get_current_employee)):
+    records = []
+    async for r in db.activities.find({"employee_id": current["employee_id"]}, sort=[("date", -1)]):
+        r["id"] = str(r.pop("_id"))
+        records.append(r)
+    return records
+
+# ── Leaves ────────────────────────────────────────────────────────────────────
+
+class LeaveIn(BaseModel):
+    leave_date: str
+    leave_type: str
+    reason: Optional[str] = None
+    status: Optional[str] = "Approved"
+
+@app.post("/api/leaves", status_code=201)
+async def create_leave(req: LeaveIn, current: dict = Depends(get_current_employee)):
+    now_iso = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "employee_id": current["employee_id"],
+        "leave_date": req.leave_date,
+        "leave_type": req.leave_type,
+        "reason": req.reason or "",
+        "status": req.status or "Approved",
+        "created_at": now_iso,
+    }
+    result = await db.leaves.insert_one(doc)
+    return {"id": str(result.inserted_id)}
+
+@app.get("/api/leaves")
+async def get_leaves(current: dict = Depends(get_current_employee)):
+    records = []
+    async for r in db.leaves.find({"employee_id": current["employee_id"]}, sort=[("leave_date", -1)]):
+        r["id"] = str(r.pop("_id"))
+        records.append(r)
+    return records
+
+# ── Reports ───────────────────────────────────────────────────────────────────
+
+class ReportIn(BaseModel):
+    date: str
+    report_type: str
+    description: Optional[str] = None
+    image_url_1: Optional[str] = None
+    image_url_2: Optional[str] = None
+
+@app.post("/api/reports", status_code=201)
+async def create_report(req: ReportIn, current: dict = Depends(get_current_employee)):
+    now_iso = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "employee_id": current["employee_id"],
+        "date": req.date,
+        "report_type": req.report_type,
+        "description": req.description or "",
+        "image_url_1": req.image_url_1,
+        "image_url_2": req.image_url_2,
+        "created_at": now_iso,
+    }
+    result = await db.reports.insert_one(doc)
+    return {"id": str(result.inserted_id)}
+
+@app.get("/api/reports")
+async def get_reports(current: dict = Depends(get_current_employee)):
+    records = []
+    async for r in db.reports.find({"employee_id": current["employee_id"]}, sort=[("date", -1)]):
+        r["id"] = str(r.pop("_id"))
+        records.append(r)
+    return records
+
+# ── Daily Updates ─────────────────────────────────────────────────────────────
+
+class DailyUpdateIn(BaseModel):
+    employee_id: Optional[str] = None
+    employee_name: Optional[str] = None
+    notes: Optional[str] = None
+    images: Optional[List[str]] = []
+
+@app.post("/api/daily-updates", status_code=201)
+async def create_daily_update(req: DailyUpdateIn, current: dict = Depends(get_current_employee)):
+    now_iso = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "employee_id": req.employee_id or current["employee_id"],
+        "employee_name": req.employee_name or current.get("full_name", ""),
+        "notes": req.notes or "",
+        "images": req.images or [],
+        "created_at": now_iso,
+    }
+    result = await db.daily_updates.insert_one(doc)
+    return {"id": str(result.inserted_id)}
+
+@app.get("/api/daily-updates")
+async def get_daily_updates(current: dict = Depends(get_current_employee)):
+    records = []
+    async for r in db.daily_updates.find({"employee_id": current["employee_id"]}, sort=[("created_at", -1)]):
+        r["id"] = str(r.pop("_id"))
+        records.append(r)
+    return records
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

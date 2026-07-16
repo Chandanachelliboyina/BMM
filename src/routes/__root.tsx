@@ -105,15 +105,11 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
 
+  // Auth is JWT-based — no real-time session listener needed
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "USER_UPDATED") {
-        router.invalidate();
-        if (event !== "SIGNED_OUT") queryClient.invalidateQueries();
-      }
-    });
-    return () => sub.subscription.unsubscribe();
-  }, [router, queryClient]);
+    // Invalidate router on mount so guarded routes re-check token
+    router.invalidate();
+  }, [router]);
 
   return (
     <QueryClientProvider client={queryClient}>

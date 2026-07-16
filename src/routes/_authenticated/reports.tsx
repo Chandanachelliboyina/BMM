@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { apiMe, getToken } from "@/lib/api";
 import { toast } from "sonner";
 import { FileText, Plus, Loader2, UploadCloud, ImageIcon } from "lucide-react";
 
@@ -30,64 +30,49 @@ function ReportsPage() {
   const { data: reports, isLoading } = useQuery({
     queryKey: ["reports"],
     queryFn: async () => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error("Not authenticated");
-
-      const { data, error } = await supabase
-        .from("reports")
-        .select("*")
-        .eq("user_id", user.user.id)
-        .order("date", { ascending: false });
-
-      if (error) throw error;
-      return data;
+      const emp = await apiMe();
+      if (!emp) throw new Error("Not authenticated");
+      const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+      const token = getToken();
+      const res = await fetch(`${BASE}/api/reports`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) return [];
+      return res.json();
     },
   });
 
-  const uploadImage = async (file: File, userId: string, suffix: string) => {
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${userId}_${Date.now()}_${suffix}.${fileExt}`;
-    const filePath = `reports/${fileName}`;
-
-    // Using the 'attendance' bucket since it is already configured for the user.
-    const { error: uploadError, data } = await supabase.storage
-      .from("attendance")
-      .upload(filePath, file);
-
-    if (uploadError) throw uploadError;
-
-    const { data: { publicUrl } } = supabase.storage
-      .from("attendance")
-      .getPublicUrl(filePath);
-
-    return publicUrl;
+  const uploadImage = async (file: File) => {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   };
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error("Not authenticated");
-      
+      const emp = await apiMe();
+      if (!emp) throw new Error("Not authenticated");
       if (!reportType) throw new Error("Please select a report type");
 
       let imgUrl1 = null;
       let imgUrl2 = null;
 
       if (reportType === "Medical") {
-        if (image1) imgUrl1 = await uploadImage(image1, user.user.id, "1");
-        if (image2) imgUrl2 = await uploadImage(image2, user.user.id, "2");
+        if (image1) imgUrl1 = await uploadImage(image1);
+        if (image2) imgUrl2 = await uploadImage(image2);
       }
 
-      const { error } = await supabase.from("reports").insert({
-        user_id: user.user.id,
-        date: date,
-        report_type: reportType,
-        description: description,
-        image_url_1: imgUrl1,
-        image_url_2: imgUrl2,
+      const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+      const token = getToken();
+      const res = await fetch(`${BASE}/api/reports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ date, report_type: reportType, description, image_url_1: imgUrl1, image_url_2: imgUrl2 }),
       });
-
-      if (error) throw error;
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.detail || "Failed"); }
     },
     onSuccess: () => {
       toast.success("Report submitted successfully!");

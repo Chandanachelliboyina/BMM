@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { apiMe, getToken } from "@/lib/api";
 import { toast } from "sonner";
 import { CalendarDays, Plus, Loader2, Info } from "lucide-react";
 
@@ -35,38 +35,32 @@ function LeavesPage() {
   const { data: leaves, isLoading } = useQuery({
     queryKey: ["leaves"],
     queryFn: async () => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error("Not authenticated");
-      
-      const { data, error } = await supabase
-        .from("leaves")
-        .select("*")
-        .eq("user_id", user.user.id)
-        .gte("leave_date", `${startYear}-04-01`)
-        .lte("leave_date", `${endYear}-03-31`)
-        .order("leave_date", { ascending: false });
-
-      if (error) throw error;
-      return data;
+      const emp = await apiMe();
+      if (!emp) throw new Error("Not authenticated");
+      const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+      const token = getToken();
+      const res = await fetch(`${BASE}/api/leaves`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) return [];
+      return res.json();
     },
   });
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error("Not authenticated");
+      const emp = await apiMe();
+      if (!emp) throw new Error("Not authenticated");
       if (!leaveDate) throw new Error("Please select a date");
       if (!leaveType) throw new Error("Please select a leave type");
-
-      const { error } = await supabase.from("leaves").insert({
-        user_id: user.user.id,
-        leave_date: leaveDate,
-        leave_type: leaveType,
-        reason: reason,
-        status: "Approved", // Auto-approved for this simple flow
+      const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+      const token = getToken();
+      const res = await fetch(`${BASE}/api/leaves`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ leave_date: leaveDate, leave_type: leaveType, reason: reason, status: "Approved" }),
       });
-
-      if (error) throw error;
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.detail || "Failed"); }
     },
     onSuccess: () => {
       toast.success("Leave recorded successfully!");

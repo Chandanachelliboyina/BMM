@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
 import { MANDAL_VILLAGES_DATA } from "@/data/mandals";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { apiMe, getToken } from "@/lib/api";
 import { toast } from "sonner";
 import { uploadActivityImage } from "@/lib/storage";
 import { Activity, Plus, Loader2, X } from "lucide-react";
@@ -211,8 +211,8 @@ function ActivitiesPage() {
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error("Not authenticated");
+      const emp = await apiMe();
+      if (!emp) throw new Error("Not authenticated");
 
       const caseDetails = caseIdentified 
         ? `Beneficier (${caseIdentified})\n- Name: ${caseName || "N/A"}\n- Mandal: ${caseMandal || "N/A"}\n- Village: ${caseVillage || "N/A"}\n- Cause: ${caseCause || "N/A"}\n- Strategy: ${caseStrategy || "N/A"}` 
@@ -232,7 +232,7 @@ function ActivitiesPage() {
 
       let uploadedImageUrl = "";
       if (awarenessCostType === "YES" && awarenessCostImage) {
-        uploadedImageUrl = await uploadActivityImage(user.user.id, awarenessCostImage);
+        uploadedImageUrl = await uploadActivityImage(emp.employee_id, awarenessCostImage);
       }
 
       const costStr = awarenessCostType === "YES" 
@@ -270,16 +270,22 @@ function ActivitiesPage() {
         remarks ? `General Remarks: ${remarks}` : ""
       ].filter(Boolean).join("\n\n");
 
-      const { error } = await supabase.from("activities").insert({
-        user_id: user.user.id,
-        date: date,
-        villages_visited: 0,
-        village_names: "",
-        meetings_conducted: meetings,
-        remarks: combinedRemarks,
+      const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+      const token = getToken();
+      const res = await fetch(`${BASE}/api/activities`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          employee_id: emp.employee_id,
+          date: date,
+          meetings_conducted: meetings,
+          remarks: combinedRemarks,
+        }),
       });
-
-      if (error) throw error;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.detail || "Failed to save activity");
+      }
     },
     onSuccess: () => {
       toast.success("Activity logged successfully!");

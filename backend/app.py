@@ -11,13 +11,43 @@ from bson import ObjectId
 import bcrypt
 import jwt as pyjwt
 import base64
+import certifi
+from contextlib import asynccontextmanager
 
 load_dotenv()
+
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+SECRET_KEY = os.getenv("JWT_SECRET", "bmm-super-secret-jwt-key-change-in-production")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_DAYS = 30
+
+client = None
+db = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global client, db
+    try:
+        client = AsyncIOMotorClient(MONGO_URI, tlsCAFile=certifi.where(), tlsAllowInvalidCertificates=True)
+        db = client.bmm_database
+        await client.admin.command("ping")
+        # Unique indexes
+        await db.employees.create_index("employee_id", unique=True)
+        await db.employees.create_index("email", unique=True)
+        await db.employees.create_index("mobile_number", unique=True)
+        await db.attendance.create_index([("employee_id", 1), ("login_date", 1)], unique=True)
+        print("[OK] Connected to MongoDB Atlas")
+    except Exception as e:
+        print(f"[ERROR] MongoDB connection failed: {e}")
+    yield
+    if client:
+        client.close()
 
 app = FastAPI(
     title="BMM Backend API",
     description="FastAPI + MongoDB backend for Bheemabhai Mahila Mandali (BMM)",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -28,38 +58,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Config ──────────────────────────────────────────────────────────────────
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-SECRET_KEY = os.getenv("JWT_SECRET", "bmm-super-secret-jwt-key-change-in-production")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_DAYS = 30
-
 bearer_scheme = HTTPBearer(auto_error=False)
-
-# ── DB ────────────────────────────────────────────────────────────────────────
-client = None
-db = None
-
-@app.on_event("startup")
-async def startup_db_client():
-    global client, db
-    try:
-        client = AsyncIOMotorClient(MONGO_URI)
-        db = client.bmm_database
-        await client.admin.command("ping")
-        # Unique indexes
-        await db.employees.create_index("employee_id", unique=True)
-        await db.employees.create_index("email", unique=True)
-        await db.employees.create_index("mobile_number", unique=True)
-        await db.attendance.create_index([("employee_id", 1), ("login_date", 1)], unique=True)
-        print("✅ Connected to MongoDB Atlas")
-    except Exception as e:
-        print(f"❌ MongoDB connection failed: {e}")
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    if client:
-        client.close()
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def hash_password(pwd: str) -> str:

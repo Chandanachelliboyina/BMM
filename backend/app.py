@@ -1,103 +1,123 @@
-import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from supabase import create_client, Client
-from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+from typing import Optional, List
 from motor.motor_asyncio import AsyncIOMotorClient
+import os
+from dotenv import load_dotenv
+from bson import ObjectId
 
-# Load environment variables from .env file (if running locally)
-load_dotenv(dotenv_path="../.env")
+# Load environment variables from .env file
+load_dotenv()
 
-# Initialize FastAPI app
 app = FastAPI(
-    title="BMM API",
-    description="Backend API for Bheemabhai Mahila Mandali (BMM)",
+    title="BMM Backend API",
+    description="Python FastAPI backend for Bheemabhai Mahila Mandali (BMM) App",
     version="1.0.0"
 )
 
-# Configure CORS so the React frontend can communicate with this backend
+# Configure CORS so the frontend can communicate with the backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins (update this in production!)
+    allow_origins=["*"],  # In production, change this to your frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Supabase Setup ---
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("Warning: Supabase environment variables are missing. Some endpoints may fail.")
-    supabase: Client = None
-else:
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# --- MongoDB Setup ---
-MONGODB_URI = os.getenv("MONGODB_URI")
-mongo_client = None
+# MongoDB Configuration
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+client = None
 db = None
 
-if MONGODB_URI:
-    mongo_client = AsyncIOMotorClient(MONGODB_URI)
-    db = mongo_client.get_database("bmm_database") # Default database name
-    print("MongoDB Atlas connection initialized.")
-else:
-    print("Warning: MONGODB_URI environment variable is missing. MongoDB will not be connected.")
+@app.on_event("startup")
+async def startup_db_client():
+    global client, db
+    try:
+        # Initialize MongoDB Async Client
+        client = AsyncIOMotorClient(MONGO_URI)
+        # Select the database
+        db = client.bmm_database
+        # Verify connection by pinging the server
+        await client.admin.command('ping')
+        print("Successfully connected to MongoDB Atlas!")
+    except Exception as e:
+        print(f"Failed to connect to MongoDB Atlas: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    if client:
+        client.close()
+        print("MongoDB connection closed.")
 
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to the BMM FastAPI Backend"}
+# --- Pydantic Models ---
+class ActivityModel(BaseModel):
+    user_id: str
+    date: str
+    villages_visited: Optional[int] = 0
+    village_names: Optional[str] = ""
+    meetings_conducted: Optional[str] = ""
+    remarks: Optional[str] = ""
 
+class ActivityResponseModel(ActivityModel):
+    id: str
 
-@app.get("/health")
-async def health_check():
-    """Simple health check endpoint for both Supabase and MongoDB"""
-    mongo_status = False
-    if mongo_client:
-        try:
-            # The ping command is cheap and does not require auth.
-            await mongo_client.admin.command('ping')
-            mongo_status = True
-        except Exception as e:
-            print(f"MongoDB ping failed: {e}")
-            
+# Helper function to parse ObjectId
+def activity_helper(activity) -> dict:
     return {
-        "status": "healthy",
-        "supabase_connected": supabase is not None,
-        "mongodb_connected": mongo_status
+        "id": str(activity["_id"]),
+        "user_id": activity.get("user_id"),
+        "date": activity.get("date"),
+        "villages_visited": activity.get("villages_visited", 0),
+        "village_names": activity.get("village_names", ""),
+        "meetings_conducted": activity.get("meetings_conducted", ""),
+        "remarks": activity.get("remarks", "")
     }
 
+# --- Routes ---
 
-@app.get("/api/mongo-test")
-async def mongo_test():
-    """Example endpoint to test MongoDB connection"""
-    if not db:
-        raise HTTPException(status_code=500, detail="MongoDB connection not configured")
+@app.get("/")
+async def root():
+    return {"message": "Welcome to BMM Backend API. Server is running!"}
+
+@app.get("/api/health")
+async def health_check():
+    """Check if database is connected and responsive"""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database connection is not initialized")
     
     try:
-        # Example: count documents in a 'test' collection
-        collection = db["test_collection"]
-        count = await collection.count_documents({})
-        return {"message": "Connected to MongoDB Atlas!", "test_collection_count": count}
+        await client.admin.command('ping')
+        return {"status": "healthy", "database": "connected"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
 
-
-
-@app.get("/api/employees")
-def get_employees():
-    """Example endpoint to fetch employees from Supabase"""
-    if not supabase:
-        raise HTTPException(status_code=500, detail="Database connection not configured")
-        
+@app.post("/api/activities", response_model=ActivityResponseModel, status_code=201)
+async def create_activity(activity: ActivityModel):
+    """Create a new activity log"""
     try:
-        response = supabase.table("employees").select("*").execute()
-        return response.data
+        collection = db.activities
+        new_activity = await collection.insert_one(activity.dict())
+        created_activity = await collection.find_one({"_id": new_activity.inserted_id})
+        return activity_helper(created_activity)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# To run the server locally:
-# uvicorn app:app --reload --port 8000
+@app.get("/api/activities", response_model=List[ActivityResponseModel])
+async def get_activities():
+    """Retrieve all activities"""
+    try:
+        collection = db.activities
+        activities = []
+        async for activity in collection.find():
+            activities.append(activity_helper(activity))
+        return activities
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+if __name__ == "__main__":
+    import uvicorn
+    # Run the FastAPI server
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

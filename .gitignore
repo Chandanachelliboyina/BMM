@@ -41,3 +41,6 @@ venv/
 
 # Backend ENV
 backend/.env
+
+# Vercel
+.vercel

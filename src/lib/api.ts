@@ -1,10 +1,7 @@
-// Central API client — replaces Supabase client
-// All requests go to VITE_API_URL (FastAPI backend)
-// In production: same origin (empty string) — Vercel routes /api/* to Python backend
-// In development: proxied to http://localhost:8000 via vite.config proxy
-const BASE_URL = import.meta.env.PROD
-  ? ""
-  : (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+// Central API client — points to FastAPI backend
+// Set VITE_API_URL in your hosting platform to the Railway backend URL
+// In local dev, falls back to http://localhost:8000
+const BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
 
 const TOKEN_KEY = "bmm_token";
 

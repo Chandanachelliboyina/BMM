@@ -14,7 +14,9 @@ import base64
 import certifi
 from contextlib import asynccontextmanager
 
-load_dotenv()
+load_dotenv()  # loads .env from cwd
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))  # also load from project root
+
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 SECRET_KEY = os.getenv("JWT_SECRET", "bmm-super-secret-jwt-key-change-in-production")

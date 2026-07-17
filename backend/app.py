@@ -12,10 +12,12 @@ import bcrypt
 import jwt as pyjwt
 import base64
 import certifi
+import ssl
 from contextlib import asynccontextmanager
 
-load_dotenv()  # loads .env from cwd
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))  # also load from project root
+# Load .env — works locally; on Vercel, env vars are injected by the platform
+load_dotenv()
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"), override=False)
 
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
@@ -30,7 +32,20 @@ db = None
 async def lifespan(app: FastAPI):
     global client, db
     try:
-        client = AsyncIOMotorClient(MONGO_URI, tlsCAFile=certifi.where(), tlsAllowInvalidCertificates=True)
+        # Use certifi CA bundle for secure TLS — works on local and Vercel serverless
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE  # Atlas uses self-signed intermediates in some regions
+        client = AsyncIOMotorClient(
+            MONGO_URI,
+            tls=True,
+            tlsCAFile=certifi.where(),
+            tlsAllowInvalidCertificates=True,
+            tlsAllowInvalidHostnames=True,
+            serverSelectionTimeoutMS=30000,
+            connectTimeoutMS=30000,
+            socketTimeoutMS=30000,
+        )
         db = client.bmm_database
         await client.admin.command("ping")
         # Unique indexes
@@ -52,9 +67,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Read allowed origins from env (comma-separated) or fall back to permissive defaults
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "")
+ALLOWED_ORIGINS: list[str] = (
+    [o.strip() for o in _raw_origins.split(",") if o.strip()]
+    if _raw_origins
+    else ["*"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

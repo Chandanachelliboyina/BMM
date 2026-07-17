@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
+    "dev:backend": ".venv\\Scripts\\python.exe -m uvicorn backend.app:app --reload --port 8000",
+    "dev:full": "start \"BMM-Backend\" cmd /c \".venv\\Scripts\\python.exe -m uvicorn backend.app:app --reload --port 8000\" && vite dev",
     "build": "vite build",
     "vercel-build": "vite build",
     "build:dev": "vite build --mode development",

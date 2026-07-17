@@ -32,7 +32,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  } catch (networkErr: any) {
+    // TypeError: Failed to fetch  →  backend is not reachable
+    const isDevMode = !import.meta.env.PROD;
+    const friendlyMsg = isDevMode
+      ? "Cannot reach the backend server. Make sure the Python backend is running on port 8000 (run: cd backend && uvicorn app:app --reload)."
+      : "Service is temporarily unavailable. Please try again in a moment.";
+    throw new Error(friendlyMsg);
+  }
 
   if (res.status === 401) {
     clearToken();
@@ -43,7 +53,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
+    let body: any = {};
+    try {
+      body = await res.json();
+    } catch {
+      body = {};
+    }
     throw new Error(body?.detail || `Request failed: ${res.status}`);
   }
 

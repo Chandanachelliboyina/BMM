@@ -12,7 +12,6 @@ import bcrypt
 import jwt as pyjwt
 import base64
 import certifi
-import ssl
 from contextlib import asynccontextmanager
 
 # Load .env — works locally; on Vercel, env vars are injected by the platform
@@ -32,33 +31,55 @@ db = None
 async def lifespan(app: FastAPI):
     global client, db
     try:
-        # Use certifi CA bundle for secure TLS — works on local and Vercel serverless
-        ssl_context = ssl.create_default_context(cafile=certifi.where())
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE  # Atlas uses self-signed intermediates in some regions
-        client = AsyncIOMotorClient(
-            MONGO_URI,
+        # Build connection kwargs — try with certifi first, fall back to tlsInsecure
+        # for Windows where TLSV1_ALERT_INTERNAL_ERROR can occur with some SSL builds.
+        mongo_kwargs = dict(
             tls=True,
             tlsCAFile=certifi.where(),
             tlsAllowInvalidCertificates=True,
             tlsAllowInvalidHostnames=True,
-            serverSelectionTimeoutMS=30000,
-            connectTimeoutMS=30000,
+            serverSelectionTimeoutMS=10000,
+            connectTimeoutMS=10000,
             socketTimeoutMS=30000,
         )
+        client = AsyncIOMotorClient(MONGO_URI, **mongo_kwargs)
         db = client.bmm_database
-        await client.admin.command("ping")
-        # Unique indexes
-        await db.employees.create_index("employee_id", unique=True)
-        await db.employees.create_index("email", unique=True)
-        await db.employees.create_index("mobile_number", unique=True)
-        await db.attendance.create_index([("employee_id", 1), ("login_date", 1)], unique=True)
-        print("[OK] Connected to MongoDB Atlas")
+
+        try:
+            await client.admin.command("ping")
+            # Create indexes only once connected
+            await db.employees.create_index("employee_id", unique=True)
+            await db.employees.create_index("email", unique=True)
+            await db.employees.create_index("mobile_number", unique=True)
+            await db.attendance.create_index([("employee_id", 1), ("login_date", 1)], unique=True)
+            print("[OK] Connected to MongoDB Atlas")
+        except Exception as ping_err:
+            print(f"[WARN] Initial MongoDB ping failed ({ping_err}). Retrying without CA validation...")
+            # Second attempt: completely bypass SSL cert validation (Windows SSL workaround)
+            client.close()
+            client = AsyncIOMotorClient(
+                MONGO_URI,
+                tls=True,
+                tlsInsecure=True,
+                serverSelectionTimeoutMS=15000,
+                connectTimeoutMS=15000,
+                socketTimeoutMS=30000,
+            )
+            db = client.bmm_database
+            await client.admin.command("ping")
+            await db.employees.create_index("employee_id", unique=True)
+            await db.employees.create_index("email", unique=True)
+            await db.employees.create_index("mobile_number", unique=True)
+            await db.attendance.create_index([("employee_id", 1), ("login_date", 1)], unique=True)
+            print("[OK] Connected to MongoDB Atlas (tlsInsecure fallback)")
+
     except Exception as e:
         print(f"[ERROR] MongoDB connection failed: {e}")
+        # db remains None — get_db() will return 503 to callers
     yield
     if client:
         client.close()
+
 
 app = FastAPI(
     title="BMM Backend API",
@@ -85,6 +106,16 @@ app.add_middleware(
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
+# ── DB guard ─────────────────────────────────────────────────────────────────
+def get_db():
+    """Dependency: returns the database or raises 503 if not connected."""
+    if db is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Database is unavailable. Please try again in a moment.",
+        )
+    return db
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def hash_password(pwd: str) -> str:
     return bcrypt.hashpw(pwd.encode(), bcrypt.gensalt()).decode()
@@ -100,7 +131,7 @@ def create_token(data: dict) -> str:
     payload["exp"] = datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
     return pyjwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-async def get_current_employee(creds: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
+async def get_current_employee(creds: HTTPAuthorizationCredentials = Depends(bearer_scheme), database=Depends(get_db)):
     if not creds:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
@@ -110,7 +141,7 @@ async def get_current_employee(creds: HTTPAuthorizationCredentials = Depends(bea
             raise HTTPException(status_code=401, detail="Invalid token")
     except pyjwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    emp = await db.employees.find_one({"employee_id": employee_id}, {"password_hash": 0})
+    emp = await database.employees.find_one({"employee_id": employee_id}, {"password_hash": 0})
     if not emp:
         raise HTTPException(status_code=401, detail="Employee not found")
     emp["id"] = str(emp.pop("_id"))
@@ -187,25 +218,25 @@ async def root():
 @app.get("/api/health")
 async def health():
     if db is None:
-        raise HTTPException(status_code=503, detail="DB not initialized")
+        raise HTTPException(status_code=503, detail="Database not initialized. Check MongoDB connection and environment variables.")
     try:
         await client.admin.command("ping")
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=f"Database ping failed: {e}")
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 @app.post("/api/auth/register", status_code=201)
-async def register(req: RegisterRequest):
+async def register(req: RegisterRequest, database=Depends(get_db)):
     emp_id = req.employee_id.strip().upper()
 
     # Check duplicates
-    if await db.employees.find_one({"employee_id": emp_id}):
+    if await database.employees.find_one({"employee_id": emp_id}):
         raise HTTPException(status_code=400, detail="Employee ID already taken")
-    if await db.employees.find_one({"email": req.email.strip().lower()}):
+    if await database.employees.find_one({"email": req.email.strip().lower()}):
         raise HTTPException(status_code=400, detail="Email already registered")
-    if await db.employees.find_one({"mobile_number": req.mobile_number.strip()}):
+    if await database.employees.find_one({"mobile_number": req.mobile_number.strip()}):
         raise HTTPException(status_code=400, detail="Mobile number already registered")
 
     now = datetime.now(timezone.utc).isoformat()
@@ -241,9 +272,9 @@ async def register(req: RegisterRequest):
     return {"employee_id": emp_id, "token": token, "message": "Registration successful"}
 
 @app.post("/api/auth/login")
-async def login(req: LoginRequest):
+async def login(req: LoginRequest, database=Depends(get_db)):
     emp_id = req.employee_id.strip().upper()
-    emp = await db.employees.find_one({"employee_id": emp_id})
+    emp = await database.employees.find_one({"employee_id": emp_id})
     if not emp:
         raise HTTPException(status_code=401, detail="Invalid Employee ID or password")
     if not verify_password(req.password, emp["password_hash"]):

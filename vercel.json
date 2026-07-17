@@ -1,5 +1,15 @@
 {
+  "version": 2,
+  "functions": {
+    "backend/app.py": {
+      "runtime": "@vercel/python",
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
+    {
+      "source": "/api/:path*",
+      "destination": "/backend/app.py"
+    }
   ]
 }

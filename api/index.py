@@ -27,65 +27,60 @@ ACCESS_TOKEN_EXPIRE_DAYS = 30
 client = None
 db = None
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+async def init_db():
     global client, db
+    if db is not None:
+        return db
+        
     try:
-        # Build connection kwargs — try with certifi first, fall back to tlsInsecure
-        # for Windows where TLSV1_ALERT_INTERNAL_ERROR can occur with some SSL builds.
+        # standard connection
         mongo_kwargs = dict(
             tls=True,
-            tlsCAFile=certifi.where(),
-            tlsAllowInvalidCertificates=True,
-            tlsAllowInvalidHostnames=True,
             serverSelectionTimeoutMS=10000,
             connectTimeoutMS=10000,
             socketTimeoutMS=30000,
         )
+        # On Vercel, certifi might not be needed, but we keep it safe
+        try:
+            import certifi
+            mongo_kwargs["tlsCAFile"] = certifi.where()
+        except:
+            pass
+
         client = AsyncIOMotorClient(MONGO_URI, **mongo_kwargs)
         db = client.bmm_database
-
-        try:
-            await client.admin.command("ping")
-            # Create indexes only once connected
-            await db.employees.create_index("employee_id", unique=True)
-            await db.employees.create_index("email", unique=True)
-            await db.employees.create_index("mobile_number", unique=True)
-            await db.attendance.create_index([("employee_id", 1), ("login_date", 1)], unique=True)
-            print("[OK] Connected to MongoDB Atlas")
-        except Exception as ping_err:
-            print(f"[WARN] Initial MongoDB ping failed ({ping_err}). Retrying without CA validation...")
-            # Second attempt: completely bypass SSL cert validation (Windows SSL workaround)
+        await client.admin.command("ping")
+        # Ensure indexes in background
+        await db.employees.create_index("employee_id", unique=True)
+        await db.employees.create_index("email", unique=True)
+        await db.employees.create_index("mobile_number", unique=True)
+        await db.attendance.create_index([("employee_id", 1), ("login_date", 1)], unique=True)
+        print("[OK] Connected to MongoDB Atlas")
+    except Exception as ping_err:
+        print(f"[WARN] Initial MongoDB ping failed ({ping_err}). Retrying without CA validation...")
+        if client:
             client.close()
-            client = AsyncIOMotorClient(
-                MONGO_URI,
-                tls=True,
-                tlsInsecure=True,
-                serverSelectionTimeoutMS=15000,
-                connectTimeoutMS=15000,
-                socketTimeoutMS=30000,
-            )
-            db = client.bmm_database
-            await client.admin.command("ping")
-            await db.employees.create_index("employee_id", unique=True)
-            await db.employees.create_index("email", unique=True)
-            await db.employees.create_index("mobile_number", unique=True)
-            await db.attendance.create_index([("employee_id", 1), ("login_date", 1)], unique=True)
-            print("[OK] Connected to MongoDB Atlas (tlsInsecure fallback)")
-
-    except Exception as e:
-        print(f"[ERROR] MongoDB connection failed: {e}")
-        # db remains None — get_db() will return 503 to callers
-    yield
-    if client:
-        client.close()
-
+        client = AsyncIOMotorClient(
+            MONGO_URI,
+            tls=True,
+            tlsInsecure=True,
+            serverSelectionTimeoutMS=15000,
+            connectTimeoutMS=15000,
+            socketTimeoutMS=30000,
+        )
+        db = client.bmm_database
+        await client.admin.command("ping")
+        await db.employees.create_index("employee_id", unique=True)
+        await db.employees.create_index("email", unique=True)
+        await db.employees.create_index("mobile_number", unique=True)
+        await db.attendance.create_index([("employee_id", 1), ("login_date", 1)], unique=True)
+        print("[OK] Connected to MongoDB Atlas (tlsInsecure fallback)")
+    return db
 
 app = FastAPI(
     title="BMM Backend API",
     description="FastAPI + MongoDB backend for Bheemabhai Mahila Mandali (BMM)",
     version="2.0.0",
-    lifespan=lifespan
 )
 
 # Read allowed origins from env (comma-separated) or fall back to permissive defaults
@@ -107,14 +102,15 @@ app.add_middleware(
 bearer_scheme = HTTPBearer(auto_error=False)
 
 # ── DB guard ─────────────────────────────────────────────────────────────────
-def get_db():
-    """Dependency: returns the database or raises 503 if not connected."""
-    if db is None:
+async def get_db():
+    """Dependency: returns the database, initializing it if necessary."""
+    try:
+        return await init_db()
+    except Exception as e:
         raise HTTPException(
             status_code=503,
-            detail="Database is unavailable. Please try again in a moment.",
+            detail=f"Database is unavailable. Please try again in a moment. ({e})",
         )
-    return db
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def hash_password(pwd: str) -> str:
@@ -217,9 +213,8 @@ async def root():
 
 @app.get("/api/health")
 async def health():
-    if db is None:
-        raise HTTPException(status_code=503, detail="Database not initialized. Check MongoDB connection and environment variables.")
     try:
+        await init_db()
         await client.admin.command("ping")
         return {"status": "healthy", "database": "connected"}
     except Exception as e:

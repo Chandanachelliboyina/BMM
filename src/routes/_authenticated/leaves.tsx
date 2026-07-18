@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiMe, getToken, apiAttendanceHistory } from "@/lib/api";
+import { apiMe, getToken, apiAttendanceHistory, BASE_URL } from "@/lib/api";
 import { useEmployee } from "@/hooks/useEmployee";
 import { toast } from "sonner";
 import { CalendarDays, Plus, Loader2, Info } from "lucide-react";
@@ -39,7 +39,7 @@ function LeavesPage() {
     queryFn: async () => {
       const emp = await apiMe();
       if (!emp) throw new Error("Not authenticated");
-      const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+      const BASE = BASE_URL;
       const token = getToken();
       const res = await fetch(`${BASE}/api/leaves`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -60,7 +60,7 @@ function LeavesPage() {
       if (!emp) throw new Error("Not authenticated");
       if (!leaveDate) throw new Error("Please select a date");
       if (!leaveType) throw new Error("Please select a leave type");
-      const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+      const BASE = BASE_URL;
       const token = getToken();
       const res = await fetch(`${BASE}/api/leaves`, {
         method: "POST",

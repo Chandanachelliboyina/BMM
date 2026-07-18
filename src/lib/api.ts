@@ -1,7 +1,7 @@
 // Central API client — points to FastAPI backend
 // In production (Vercel): same domain — /api/* is routed to Python backend by vercel.json
 // In local dev: uses localhost:8000
-const BASE_URL = import.meta.env.PROD
+export const BASE_URL = import.meta.env.PROD
   ? ""
   : (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
 

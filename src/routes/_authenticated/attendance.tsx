@@ -2,9 +2,9 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { Camera, MapPin, Clock, CheckCircle2, Loader2, RefreshCw, Building2 } from "lucide-react";
+import { Camera, MapPin, Clock, CheckCircle2, Loader2, RefreshCw, Building2, AlertTriangle } from "lucide-react";
 import { useEmployee } from "@/hooks/useEmployee";
-import { apiCheckin, apiAttendanceToday, type AttendanceRecord } from "@/lib/api";
+import { apiCheckin, apiCheckout, apiAttendanceToday, type AttendanceRecord } from "@/lib/api";
 import { compareFaces, loadFaceModels } from "@/lib/face-recognition";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -32,7 +32,7 @@ function AttendancePage() {
   const [cameraOn, setCameraOn] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [verifying, setVerifying] = useState(false);
-  const [alreadyMarked, setAlreadyMarked] = useState<{ time: string; selfie: string | null } | null>(null);
+  const [alreadyMarked, setAlreadyMarked] = useState<{ time: string; selfie: string | null; checkoutTime?: string | null } | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -45,7 +45,7 @@ function AttendancePage() {
     if (!employee) return;
     apiAttendanceToday().then((data: AttendanceRecord | null) => {
       if (data) {
-        setAlreadyMarked({ time: data.login_time, selfie: data.selfie_b64 ?? null });
+        setAlreadyMarked({ time: data.login_time, selfie: data.selfie_b64 ?? null, checkoutTime: data.logout_time });
       }
     });
   }, [employee]);
@@ -141,14 +141,30 @@ function AttendancePage() {
         setLocation({ lat, lng, address });
       },
       (err) => setLocError(err.message || "Unable to get location"),
-      { enableHighAccuracy: true, timeout: 15000 },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );
   }, []);
 
   useEffect(() => { captureLocation(); }, [captureLocation]);
 
-  const submit = async () => {
-    if (!employee) return;
+  const isCheckedIn = !!alreadyMarked;
+  const isCheckedOut = isCheckedIn && !!alreadyMarked.checkoutTime;
+  const needsAction = !isCheckedIn || (isCheckedIn && !isCheckedOut);
+  
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  const timeInMinutes = currentHour * 60 + currentMinute;
+  
+  const isWithinCheckinWindow = timeInMinutes >= (9 * 60) && timeInMinutes <= (10 * 60);
+  const isAfterCheckoutTime = timeInMinutes >= (18 * 60);
+
+  const canSubmit = (!isCheckedIn && isWithinCheckinWindow) || (isCheckedIn && !isCheckedOut && isAfterCheckoutTime);
+
+  const handleSubmit = async () => {
+    if (!canSubmit) {
+      toast.error(isCheckedIn ? "Sign out is only allowed after 06:00 PM." : "Sign-in is only allowed between 09:00 AM and 10:00 AM.");
+      return;
+    }
     if (!selfieBlob) { toast.error("Please capture your selfie"); return; }
     if (!location) { toast.error("Waiting for location — allow location access"); return; }
 
@@ -170,19 +186,31 @@ function AttendancePage() {
       setVerifying(false);
       return;
     }
-    toast.success(`Face matched! Welcome, ${employee.full_name}`);
+    toast.success(`Face matched! Welcome, ${employee!.full_name}`);
 
     setSubmitting(true);
     try {
-      await apiCheckin({
-        employee_name: employee.full_name,
-        role: employee.role,
-        gps_latitude: location.lat,
-        gps_longitude: location.lng,
-        full_address: location.address ?? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`,
-        selfieBlob,
-      });
-      toast.success("Attendance marked successfully");
+      if (alreadyMarked && !alreadyMarked.checkoutTime) {
+        // Handle Checkout
+        await apiCheckout({
+          gps_latitude: location.lat,
+          gps_longitude: location.lng,
+          full_address: location.address ?? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`,
+          selfieBlob,
+        });
+        toast.success("Checkout marked successfully");
+      } else {
+        // Handle Checkin
+        await apiCheckin({
+          employee_name: employee!.full_name,
+          role: employee!.role,
+          gps_latitude: location.lat,
+          gps_longitude: location.lng,
+          full_address: location.address ?? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`,
+          selfieBlob,
+        });
+        toast.success("Attendance marked successfully");
+      }
       setTimeout(() => navigate({ to: "/dashboard" }), 700);
     } catch (err: any) {
       if (err?.message?.includes("409") || err?.message?.toLowerCase().includes("already")) {
@@ -239,12 +267,13 @@ function AttendancePage() {
           </div>
         </Card>
 
-        {alreadyMarked ? (
+        {isCheckedOut ? (
           <Card className="p-8 text-center shadow-card border-success/30 bg-success/5">
             <CheckCircle2 className="w-14 h-14 text-success mx-auto" />
-            <h2 className="text-2xl font-bold mt-4">Attendance already marked today</h2>
+            <h2 className="text-2xl font-bold mt-4">Attendance fully marked today</h2>
             <p className="text-muted-foreground mt-1">
-              Checked in at {format(new Date(alreadyMarked.time), "hh:mm a")}
+              Checked in at {format(new Date(alreadyMarked.time), "hh:mm a")} <br/>
+              Checked out at {format(new Date(alreadyMarked.checkoutTime!), "hh:mm a")}
             </p>
             {alreadyMarked.selfie && (
               <img src={alreadyMarked.selfie} alt="Today's selfie" className="w-32 h-32 rounded-full mx-auto mt-6 object-cover border-2 border-success/30" />
@@ -256,10 +285,36 @@ function AttendancePage() {
         ) : (
           <div className="grid lg:grid-cols-2 gap-6">
             <Card className="p-5 shadow-card">
-              <div className="flex items-center gap-2 mb-4">
-                <Camera className="w-5 h-5 text-primary" />
-                <h3 className="font-semibold">Selfie Face Verification</h3>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Camera className="w-5 h-5 text-primary" />
+                  <h3 className="font-semibold">{isCheckedIn ? "Sign Out Verification" : "Selfie Face Verification"}</h3>
+                </div>
               </div>
+              
+              {!isCheckedIn && !isWithinCheckinWindow && (
+                <div className="mb-4 bg-destructive/10 text-destructive text-sm p-3 rounded-md flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  Sign-in is only allowed between 09:00 AM and 10:00 AM.
+                </div>
+              )}
+              
+              {isCheckedIn && !isCheckedOut && (
+                <div className={`mb-4 ${isAfterCheckoutTime ? "bg-primary/10 text-primary" : "bg-warning/10 text-warning-foreground"} text-sm p-3 rounded-md flex items-center gap-2`}>
+                  {isAfterCheckoutTime ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      You are checked in. Please capture your selfie and location again to sign out.
+                    </>
+                  ) : (
+                    <>
+                      <Clock className="w-4 h-4 shrink-0" />
+                      You are checked in. Sign out is only allowed after 06:00 PM.
+                    </>
+                  )}
+                </div>
+              )}
+
               <p className="text-sm text-muted-foreground mb-4">
                 Please ensure your face is clearly visible to verify your identity.
               </p>
@@ -345,21 +400,21 @@ function AttendancePage() {
               </div>
               <div className="mt-5 pt-5 border-t flex items-center gap-2 text-sm text-muted-foreground">
                 <Clock className="w-4 h-4" />
-                Login will be recorded at {format(now, "hh:mm:ss a")} on {format(now, "dd MMM yyyy")}
+                {isCheckedIn ? "Checkout" : "Login"} will be recorded at {format(now, "hh:mm:ss a")} on {format(now, "dd MMM yyyy")}
               </div>
             </Card>
           </div>
         )}
 
-        {!alreadyMarked && (
+        {needsAction && (
           <div className="flex justify-end">
-            <Button
-              onClick={submit}
-              disabled={submitting || verifying || !selfieBlob || !location}
-              className="h-12 px-8 bg-gradient-primary shadow-elegant"
+            <Button 
+              onClick={handleSubmit} 
+              disabled={submitting || verifying}
+              className="w-full h-12 text-lg font-semibold shadow-lg hover:shadow-xl transition-all"
             >
               {submitting || verifying ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-              {verifying ? "Verifying Face..." : submitting ? "Submitting..." : "Mark Attendance"}
+              {verifying ? "Verifying Face..." : submitting ? "Submitting..." : (isCheckedIn ? "Mark Checkout" : "Mark Attendance")}
             </Button>
           </div>
         )}

@@ -136,9 +136,6 @@ function ActivitiesPage() {
   const [awarenessVillage, setAwarenessVillage] = useState("");
   const [awarenessMandal, setAwarenessMandal] = useState("");
   const [awarenessParticipants, setAwarenessParticipants] = useState("");
-  const [awarenessCost, setAwarenessCost] = useState("");
-  const [awarenessCostType, setAwarenessCostType] = useState<"YES" | "NO" | "">("");
-  const [awarenessCostImage, setAwarenessCostImage] = useState<File | null>(null);
   const [activeAwTab, setActiveAwTab] = useState("head");
   
   const [caseIdentified, setCaseIdentified] = useState("");
@@ -230,17 +227,8 @@ function ActivitiesPage() {
         ? `Referred (${referredType})\n- Destinations: ${referredDestinations.length > 0 ? referredDestinations.join(", ") : "None"}\n- Mandal: ${referredMandal || "N/A"}\n- Village: ${referredVillage || "N/A"}` 
         : "";
 
-      let uploadedImageUrl = "";
-      if (awarenessCostType === "YES" && awarenessCostImage) {
-        uploadedImageUrl = await uploadActivityImage(emp.employee_id, awarenessCostImage);
-      }
-
-      const costStr = awarenessCostType === "YES" 
-        ? `YES ${awarenessCost ? `(Amount: ${awarenessCost})` : ""} ${uploadedImageUrl ? `[Image: ${uploadedImageUrl}]` : ""}` 
-        : (awarenessCostType === "NO" ? "NO" : "");
-
-      const awarenessDetails = (awarenessHead || awarenessProgramme || awarenessVillage || awarenessMandal || awarenessParticipants || awarenessCostType) 
-        ? `Awareness Meeting Conducted\n- Head of the Meeting: ${awarenessHead || "N/A"}\n- Name of the Programme: ${awarenessProgramme || "N/A"}\n- Target Village: ${awarenessVillage || "N/A"}\n- Target Mandal: ${awarenessMandal || "N/A"}\n- Participant Reached: ${awarenessParticipants || "N/A"}\n- Cost Included: ${costStr || "N/A"}`
+      const awarenessDetails = (awarenessHead || awarenessProgramme || awarenessVillage || awarenessMandal || awarenessParticipants) 
+        ? `Awareness Meeting Conducted\n- Head of the Meeting: ${awarenessHead || "N/A"}\n- Name of the Programme: ${awarenessProgramme || "N/A"}\n- Target Village: ${awarenessVillage || "N/A"}\n- Target Mandal: ${awarenessMandal || "N/A"}\n- Participant Reached: ${awarenessParticipants || "N/A"}`
         : "";
 
       const combinedRemarks = [
@@ -300,9 +288,6 @@ function ActivitiesPage() {
       setAwarenessVillage("");
       setAwarenessMandal("");
       setAwarenessParticipants("");
-      setAwarenessCost("");
-      setAwarenessCostType("");
-      setAwarenessCostImage(null);
       setActiveAwTab("head");
       
       setCaseIdentified("");
@@ -379,6 +364,15 @@ function ActivitiesPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!date) {
+      toast.error("Please select a date.");
+      return;
+    }
+    const hasActivity = (awarenessHead || caseIdentified || followUp || counselling || referredType || homeVisit || fieldVisits || iecMaterial || dustBins || plantSaplings || nutritionKits || staffCapacity || staffReview || governanceType || complianceType || Object.keys(officeDocData).length > 0 || remarks || meetings);
+    if (!hasActivity) {
+      toast.error("Please fill in at least one activity detail before submitting.");
+      return;
+    }
     setIsSubmitting(true);
     submitMutation.mutate();
   };
@@ -467,7 +461,6 @@ function ActivitiesPage() {
                             { id: "programme", label: "NAME OF THE PROGRAMME" },
                             { id: "target", label: "TARGET" },
                             { id: "participants", label: "PARTICIPANT REACHED" },
-                            { id: "cost", label: "IF ANY COST INCLUDE BY YOU" },
                           ].map((tab) => (
                             <Button
                               key={tab.id}
@@ -522,58 +515,6 @@ function ActivitiesPage() {
                               value={awarenessParticipants} 
                               onChange={(e) => setAwarenessParticipants(e.target.value)} 
                             />
-                          </div>
-                        )}
-                        {activeAwTab === "cost" && (
-                          <div className="space-y-4">
-                            <Label>If Any Cost Include By You</Label>
-                            <div className="flex gap-2">
-                              <Button
-                                type="button"
-                                variant={awarenessCostType === "YES" ? "default" : "secondary"}
-                                onClick={() => setAwarenessCostType("YES")}
-                              >
-                                YES
-                              </Button>
-                              <Button
-                                type="button"
-                                variant={awarenessCostType === "NO" ? "default" : "secondary"}
-                                onClick={() => setAwarenessCostType("NO")}
-                              >
-                                NO
-                              </Button>
-                            </div>
-
-                            {awarenessCostType === "YES" && (
-                              <div className="space-y-4 mt-4 p-4 border rounded-md bg-background">
-                                <div className="space-y-2">
-                                  <Label>Payment Amount (Optional)</Label>
-                                  <Input 
-                                    placeholder="Enter cost details..." 
-                                    value={awarenessCost} 
-                                    onChange={(e) => setAwarenessCost(e.target.value)} 
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <Label>Add Payment Image</Label>
-                                  <Input 
-                                    type="file" 
-                                    accept="image/*"
-                                    onChange={(e) => {
-                                      if (e.target.files && e.target.files.length > 0) {
-                                        setAwarenessCostImage(e.target.files[0]);
-                                      }
-                                    }} 
-                                  />
-                                </div>
-                              </div>
-                            )}
-
-                            {awarenessCostType === "NO" && (
-                              <div className="mt-4 p-4 border rounded-md bg-muted/50 text-center font-medium text-muted-foreground">
-                                OK - No cost included.
-                              </div>
-                            )}
                           </div>
                         )}
                       </div>

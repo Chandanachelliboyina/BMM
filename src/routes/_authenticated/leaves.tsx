@@ -8,7 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiMe, getToken } from "@/lib/api";
+import { apiMe, getToken, apiAttendanceHistory } from "@/lib/api";
+import { useEmployee } from "@/hooks/useEmployee";
 import { toast } from "sonner";
 import { CalendarDays, Plus, Loader2, Info } from "lucide-react";
 
@@ -18,6 +19,7 @@ export const Route = createFileRoute("/_authenticated/leaves")({
 
 function LeavesPage() {
   const queryClient = useQueryClient();
+  const { employee } = useEmployee();
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Form State
@@ -45,6 +47,11 @@ function LeavesPage() {
       if (!res.ok) return [];
       return res.json();
     },
+  });
+
+  const { data: attendance } = useQuery({
+    queryKey: ["attendanceHistory"],
+    queryFn: apiAttendanceHistory
   });
 
   const submitMutation = useMutation({
@@ -79,12 +86,17 @@ function LeavesPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!leaveDate || !leaveType || !reason.trim() || (leaveType === "Sick" && !reportImage)) {
+      toast.error("Please fill all required details before submitting.");
+      return;
+    }
     setIsSubmitting(true);
     submitMutation.mutate();
   };
 
-  // 12 months total, but 3 months are already over, so 9 leaves remaining for this year.
-  const totalLeaves = 9;
+  const passedMonthsInFinYear = currentMonth >= 3 ? currentMonth - 3 : currentMonth + 9;
+  const initialLeaves = 12;
+  const totalLeaves = initialLeaves - passedMonthsInFinYear;
   
   let takenCasual = 0;
   let takenSick = 0;
@@ -96,7 +108,15 @@ function LeavesPage() {
     });
   }
 
-  const remainingCasual = Math.max(0, totalLeaves - takenCasual);
+  let absentDays = 0;
+  if (employee && attendance) {
+    const present = attendance.filter((r: any) => r.login_time && r.logout_time).length;
+    const joined = employee.joining_date ? new Date(employee.joining_date) : new Date(employee.created_at || Date.now());
+    const daysSince = Math.max(1, Math.ceil((Date.now() - joined.getTime()) / (1000 * 60 * 60 * 24)));
+    absentDays = Math.max(0, daysSince - present);
+  }
+
+  const remainingCasual = Math.max(0, totalLeaves - takenCasual - absentDays);
   const remainingSick = Math.max(0, totalLeaves - takenSick);
 
   return (
@@ -125,7 +145,7 @@ function LeavesPage() {
                   <div className="text-xs text-blue-700 dark:text-blue-400">Total</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">{takenCasual}</div>
+                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">{takenCasual + absentDays}</div>
                   <div className="text-xs text-blue-700 dark:text-blue-400">Taken</div>
                 </div>
                 <div>
@@ -162,7 +182,7 @@ function LeavesPage() {
 
         <div className="flex items-start gap-2 text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
           <Info className="h-5 w-5 shrink-0 text-blue-500" />
-          <p>Since 3 months of the financial year are already over, you have 9 Casual Leaves and 9 Sick Leaves remaining for the period of April {startYear} to March {endYear}.</p>
+          <p>Since {passedMonthsInFinYear} months of the financial year are already over, you have {totalLeaves} Casual Leaves and {totalLeaves} Sick Leaves remaining for the period of April {startYear} to March {endYear}.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

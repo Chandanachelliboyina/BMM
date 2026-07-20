@@ -296,6 +296,13 @@ function LeavesPage() {
                       <div>
                         <div className="font-semibold">{new Date(leave.leave_date).toLocaleDateString()}</div>
                         <div className="text-sm text-muted-foreground mt-1">{leave.reason || "No reason provided"}</div>
+                        {leave.image_b64 && (
+                          <div className="mt-3">
+                            <a href={leave.image_b64} target="_blank" rel="noreferrer">
+                              <img src={leave.image_b64} alt="Medical Report" className="w-16 h-16 object-cover rounded-md border shadow-sm hover:opacity-80 transition" />
+                            </a>
+                          </div>
+                        )}
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <div className={`text-sm px-2 py-1 rounded-md font-medium ${

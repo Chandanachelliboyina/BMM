@@ -60,12 +60,23 @@ function LeavesPage() {
       if (!emp) throw new Error("Not authenticated");
       if (!leaveDate) throw new Error("Please select a date");
       if (!leaveType) throw new Error("Please select a leave type");
+      
+      let image_b64 = undefined;
+      if (leaveType === "Sick" && reportImage) {
+        image_b64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(reportImage);
+        });
+      }
+
       const BASE = BASE_URL;
       const token = getToken();
       const res = await fetch(`${BASE}/api/leaves`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ leave_date: leaveDate, leave_type: leaveType, reason: reason, status: "Approved" }),
+        body: JSON.stringify({ leave_date: leaveDate, leave_type: leaveType, reason: reason, status: "Approved", image_b64 }),
       });
       if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.detail || "Failed"); }
     },

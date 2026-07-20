@@ -41,7 +41,7 @@ export function AppShell({ title, children }: { title: string; children: ReactNo
       () => {
         setLocationStr("Location unavailable");
       },
-      { enableHighAccuracy: false, timeout: 15000 }
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
     );
   }, []);
 

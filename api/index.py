@@ -240,6 +240,8 @@ async def register(req: RegisterRequest, database=Depends(get_db)):
         "target_mandals": req.target_mandals or None,
         "targets": req.targets or None,
         "profile_photo_b64": req.profile_photo_b64 or None,
+        "casual_leaves": 12,
+        "sick_leaves": 12,
         "joining_date": now[:10],
         "created_at": now,
         "updated_at": now,
@@ -316,11 +318,17 @@ async def employee_count(current: dict = Depends(get_current_employee)):
 
 @app.post("/api/attendance/checkin", status_code=201)
 async def checkin(req: CheckinRequest, current: dict = Depends(get_current_employee)):
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    now = datetime.now(timezone.utc)
+    
+    # Sunday holiday check
+    if now.weekday() == 6:
+        raise HTTPException(status_code=400, detail="Today is Sunday (Holiday). Attendance cannot be marked.")
+        
+    today = now.strftime("%Y-%m-%d")
     existing = await db.attendance.find_one({"employee_id": current["employee_id"], "login_date": today})
     if existing:
         raise HTTPException(status_code=409, detail="Attendance already marked for today")
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = now.isoformat()
     doc = {
         "employee_id": current["employee_id"],
         "employee_name": req.employee_name,
@@ -426,6 +434,7 @@ class LeaveIn(BaseModel):
     leave_type: str
     reason: Optional[str] = None
     status: Optional[str] = "Approved"
+    image_b64: Optional[str] = None
 
 @app.post("/api/leaves", status_code=201)
 async def create_leave(req: LeaveIn, current: dict = Depends(get_current_employee)):
@@ -436,6 +445,7 @@ async def create_leave(req: LeaveIn, current: dict = Depends(get_current_employe
         "leave_type": req.leave_type,
         "reason": req.reason or "",
         "status": req.status or "Approved",
+        "image_b64": req.image_b64 or None,
         "created_at": now_iso,
     }
     result = await db.leaves.insert_one(doc)
@@ -511,6 +521,62 @@ async def get_daily_updates(current: dict = Depends(get_current_employee)):
     return records
 
 
+# ── Cron Jobs ─────────────────────────────────────────────────────────────────
+
+@app.get("/api/cron/daily")
+async def daily_cron(database=Depends(get_db)):
+    """
+    To be triggered daily (e.g. at midnight) by Vercel Cron.
+    """
+    now = datetime.now(timezone.utc)
+    today = now.strftime("%Y-%m-%d")
+    yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # 1. On the 1st of every month, minus one casual leave and sick leave for everyone
+    if now.day == 1:
+        await database.employees.update_many(
+            {},
+            {"$inc": {"casual_leaves": -1, "sick_leaves": -1}}
+        )
+
+    # 2. Process yesterday's missing check-outs
+    missing_checkouts = database.attendance.find({"login_date": yesterday, "logout_time": None})
+    async for record in missing_checkouts:
+        emp_id = record["employee_id"]
+        emp = await database.employees.find_one({"employee_id": emp_id})
+        
+        if not emp:
+            continue
+            
+        casual_leaves = emp.get("casual_leaves", 0)
+        
+        if casual_leaves > 0:
+            # Minus the casual leave
+            await database.employees.update_one(
+                {"employee_id": emp_id},
+                {"$inc": {"casual_leaves": -1}}
+            )
+        else:
+            # Next day repeat the process is mark as absent list
+            # If they have no casual leaves left, mark today as Absent
+            existing_today = await database.attendance.find_one({"employee_id": emp_id, "login_date": today})
+            if not existing_today:
+                absent_doc = {
+                    "employee_id": emp_id,
+                    "employee_name": record.get("employee_name", ""),
+                    "role": record.get("role", ""),
+                    "login_date": today,
+                    "login_time": None,
+                    "logout_time": None,
+                    "attendance_status": "Absent",
+                    "remarks": "Marked absent due to missing check-out yesterday and 0 casual leaves remaining.",
+                    "created_at": now.isoformat(),
+                }
+                await database.attendance.insert_one(absent_doc)
+
+    return {"message": "Daily cron job completed successfully."}
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("index:app", host="0.0.0.0", port=8000, reload=True)

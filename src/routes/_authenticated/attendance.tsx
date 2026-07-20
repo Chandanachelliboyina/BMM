@@ -141,7 +141,7 @@ function AttendancePage() {
         setLocation({ lat, lng, address });
       },
       (err) => setLocError(err.message || "Unable to get location"),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 },
     );
   }, []);
 

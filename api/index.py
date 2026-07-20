@@ -380,11 +380,13 @@ async def attendance_today(current: dict = Depends(get_current_employee)):
 
 @app.get("/api/attendance/history")
 async def attendance_history(current: dict = Depends(get_current_employee)):
+    query = {"employee_id": current["employee_id"]}
+    if current.get("role", "").upper() != "ADMIN":
+        thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        query["created_at"] = {"$gte": thirty_days_ago}
+        
     records = []
-    async for r in db.attendance.find(
-        {"employee_id": current["employee_id"]},
-        sort=[("login_date", -1)]
-    ):
+    async for r in db.attendance.find(query, sort=[("login_date", -1)]):
         r["id"] = str(r.pop("_id"))
         records.append(r)
     return records
@@ -421,8 +423,13 @@ async def create_activity(req: ActivityIn, current: dict = Depends(get_current_e
 
 @app.get("/api/activities")
 async def get_activities(current: dict = Depends(get_current_employee)):
+    query = {"employee_id": current["employee_id"]}
+    if current.get("role", "").upper() != "ADMIN":
+        thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        query["created_at"] = {"$gte": thirty_days_ago}
+        
     records = []
-    async for r in db.activities.find({"employee_id": current["employee_id"]}, sort=[("date", -1)]):
+    async for r in db.activities.find(query, sort=[("date", -1)]):
         r["id"] = str(r.pop("_id"))
         records.append(r)
     return records
@@ -453,8 +460,13 @@ async def create_leave(req: LeaveIn, current: dict = Depends(get_current_employe
 
 @app.get("/api/leaves")
 async def get_leaves(current: dict = Depends(get_current_employee)):
+    query = {"employee_id": current["employee_id"]}
+    if current.get("role", "").upper() != "ADMIN":
+        thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        query["created_at"] = {"$gte": thirty_days_ago}
+        
     records = []
-    async for r in db.leaves.find({"employee_id": current["employee_id"]}, sort=[("leave_date", -1)]):
+    async for r in db.leaves.find(query, sort=[("leave_date", -1)]):
         r["id"] = str(r.pop("_id"))
         records.append(r)
     return records
@@ -485,8 +497,13 @@ async def create_report(req: ReportIn, current: dict = Depends(get_current_emplo
 
 @app.get("/api/reports")
 async def get_reports(current: dict = Depends(get_current_employee)):
+    query = {"employee_id": current["employee_id"]}
+    if current.get("role", "").upper() != "ADMIN":
+        thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        query["created_at"] = {"$gte": thirty_days_ago}
+        
     records = []
-    async for r in db.reports.find({"employee_id": current["employee_id"]}, sort=[("date", -1)]):
+    async for r in db.reports.find(query, sort=[("date", -1)]):
         r["id"] = str(r.pop("_id"))
         records.append(r)
     return records
@@ -514,8 +531,13 @@ async def create_daily_update(req: DailyUpdateIn, current: dict = Depends(get_cu
 
 @app.get("/api/daily-updates")
 async def get_daily_updates(current: dict = Depends(get_current_employee)):
+    query = {"employee_id": current["employee_id"]}
+    if current.get("role", "").upper() != "ADMIN":
+        thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        query["created_at"] = {"$gte": thirty_days_ago}
+        
     records = []
-    async for r in db.daily_updates.find({"employee_id": current["employee_id"]}, sort=[("created_at", -1)]):
+    async for r in db.daily_updates.find(query, sort=[("created_at", -1)]):
         r["id"] = str(r.pop("_id"))
         records.append(r)
     return records
@@ -573,6 +595,21 @@ async def daily_cron(database=Depends(get_db)):
                     "created_at": now.isoformat(),
                 }
                 await database.attendance.insert_one(absent_doc)
+
+    # 3. Clean up images older than 20 days
+    date_20_days_ago = (now - timedelta(days=20)).isoformat()
+    await database.leaves.update_many({"created_at": {"$lt": date_20_days_ago}}, {"$unset": {"image_b64": ""}})
+    await database.attendance.update_many({"created_at": {"$lt": date_20_days_ago}}, {"$unset": {"selfie_b64": "", "logout_selfie_b64": ""}})
+    await database.daily_updates.update_many({"created_at": {"$lt": date_20_days_ago}}, {"$set": {"images": []}})
+    await database.reports.update_many({"created_at": {"$lt": date_20_days_ago}}, {"$unset": {"image_url_1": "", "image_url_2": ""}})
+
+    # 4. Clean up all records older than 6 months (180 days)
+    date_180_days_ago = (now - timedelta(days=180)).isoformat()
+    await database.leaves.delete_many({"created_at": {"$lt": date_180_days_ago}})
+    await database.attendance.delete_many({"created_at": {"$lt": date_180_days_ago}})
+    await database.activities.delete_many({"created_at": {"$lt": date_180_days_ago}})
+    await database.daily_updates.delete_many({"created_at": {"$lt": date_180_days_ago}})
+    await database.reports.delete_many({"created_at": {"$lt": date_180_days_ago}})
 
     return {"message": "Daily cron job completed successfully."}
 

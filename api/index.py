@@ -216,7 +216,14 @@ async def register(req: RegisterRequest, database=Depends(get_db)):
     if await database.employees.find_one({"mobile_number": req.mobile_number.strip()}):
         raise HTTPException(status_code=400, detail="Mobile number already registered")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
+    current_month = now.month
+    if current_month >= 4:
+        remaining_months = 12 - (current_month - 4)
+    else:
+        remaining_months = 4 - current_month
+
+    now_iso = now.isoformat()
     doc = {
         "employee_id": emp_id,
         "full_name": req.full_name.strip(),
@@ -240,11 +247,11 @@ async def register(req: RegisterRequest, database=Depends(get_db)):
         "target_mandals": req.target_mandals or None,
         "targets": req.targets or None,
         "profile_photo_b64": req.profile_photo_b64 or None,
-        "casual_leaves": 12,
-        "sick_leaves": 12,
-        "joining_date": now[:10],
-        "created_at": now,
-        "updated_at": now,
+        "casual_leaves": remaining_months,
+        "sick_leaves": remaining_months,
+        "joining_date": now_iso[:10],
+        "created_at": now_iso,
+        "updated_at": now_iso,
     }
     await db.employees.insert_one(doc)
     token = create_token({"sub": emp_id})

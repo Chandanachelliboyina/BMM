@@ -344,7 +344,7 @@ async def checkin(req: CheckinRequest, current: dict = Depends(get_current_emplo
         "logout_gps_latitude": None,
         "logout_gps_longitude": None,
         "logout_full_address": None,
-        "attendance_status": "Present",
+        "attendance_status": "Incomplete",
         "created_at": now_iso,
     }
     result = await db.attendance.insert_one(doc)
@@ -365,6 +365,7 @@ async def checkout(req: CheckoutRequest, current: dict = Depends(get_current_emp
             "logout_gps_latitude": req.gps_latitude,
             "logout_gps_longitude": req.gps_longitude,
             "logout_full_address": req.full_address,
+            "attendance_status": "Present",
         }}
     )
     return {"logout_time": now_iso, "message": "Logout recorded"}
@@ -446,6 +447,20 @@ class LeaveIn(BaseModel):
 @app.post("/api/leaves", status_code=201)
 async def create_leave(req: LeaveIn, current: dict = Depends(get_current_employee)):
     now_iso = datetime.now(timezone.utc).isoformat()
+    
+    # Deduct leave balance instantly upon applying (approval logic)
+    leave_type_upper = req.leave_type.upper()
+    if "CASUAL" in leave_type_upper:
+        await db.employees.update_one(
+            {"employee_id": current["employee_id"]},
+            {"$inc": {"casual_leaves": -1}}
+        )
+    elif "SICK" in leave_type_upper:
+        await db.employees.update_one(
+            {"employee_id": current["employee_id"]},
+            {"$inc": {"sick_leaves": -1}}
+        )
+
     doc = {
         "employee_id": current["employee_id"],
         "leave_date": req.leave_date,
@@ -561,37 +576,37 @@ async def daily_cron(database=Depends(get_db)):
             {"$inc": {"casual_leaves": -1, "sick_leaves": -1}}
         )
 
-    # 2. Process yesterday's missing check-outs
-    missing_checkouts = database.attendance.find({"login_date": yesterday, "logout_time": None})
-    async for record in missing_checkouts:
-        emp_id = record["employee_id"]
-        emp = await database.employees.find_one({"employee_id": emp_id})
-        
-        if not emp:
-            continue
+    # 2. Process yesterday's attendance (Absents and Incomplete)
+    # If they signed in but didn't sign out, mark them Absent
+    await database.attendance.update_many(
+        {"login_date": yesterday, "logout_time": None},
+        {"$set": {"attendance_status": "Absent", "remarks": "Marked absent (incomplete sign-out yesterday)."}}
+    )
+
+    # For employees who didn't sign in at all yesterday, generate an Absent record (if it was a working day)
+    yesterday_date_obj = datetime.strptime(yesterday, "%Y-%m-%d")
+    if yesterday_date_obj.weekday() != 6: # Skip Sundays
+        all_emps = database.employees.find({})
+        async for emp in all_emps:
+            emp_id = emp["employee_id"]
             
-        casual_leaves = emp.get("casual_leaves", 0)
-        
-        if casual_leaves > 0:
-            # Minus the casual leave
-            await database.employees.update_one(
-                {"employee_id": emp_id},
-                {"$inc": {"casual_leaves": -1}}
-            )
-        else:
-            # Next day repeat the process is mark as absent list
-            # If they have no casual leaves left, mark today as Absent
-            existing_today = await database.attendance.find_one({"employee_id": emp_id, "login_date": today})
-            if not existing_today:
+            # Did they check in yesterday?
+            record = await database.attendance.find_one({"employee_id": emp_id, "login_date": yesterday})
+            if not record:
+                # Did they have an approved leave yesterday?
+                leave_record = await database.leaves.find_one({"employee_id": emp_id, "leave_date": yesterday})
+                if leave_record:
+                    continue # Skip marking absent if they were on leave
+                    
                 absent_doc = {
                     "employee_id": emp_id,
-                    "employee_name": record.get("employee_name", ""),
-                    "role": record.get("role", ""),
-                    "login_date": today,
+                    "employee_name": emp.get("full_name", ""),
+                    "role": emp.get("role", ""),
+                    "login_date": yesterday,
                     "login_time": None,
                     "logout_time": None,
                     "attendance_status": "Absent",
-                    "remarks": "Marked absent due to missing check-out yesterday and 0 casual leaves remaining.",
+                    "remarks": "Marked absent (did not sign in yesterday).",
                     "created_at": now.isoformat(),
                 }
                 await database.attendance.insert_one(absent_doc)

@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
 import { MANDAL_VILLAGES_DATA } from "@/data/mandals";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiMe, getToken } from "@/lib/api";
+import { apiMe, getToken, BASE_URL } from "@/lib/api";
 import { toast } from "sonner";
 import { uploadActivityImage } from "@/lib/storage";
 import { Activity, Plus, Loader2, X } from "lucide-react";
@@ -258,7 +258,7 @@ function ActivitiesPage() {
         remarks ? `General Remarks: ${remarks}` : ""
       ].filter(Boolean).join("\n\n");
 
-      const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+      const BASE = BASE_URL;
       const token = getToken();
       const res = await fetch(`${BASE}/api/activities`, {
         method: "POST",

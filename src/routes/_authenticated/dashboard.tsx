@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { CalendarCheck, CalendarX2, Clock, TrendingUp, ClipboardList, Activity, User } from "lucide-react";
-import { apiAttendanceHistory, apiEmployeeCount, getToken } from "@/lib/api";
+import { apiAttendanceHistory, apiEmployeeCount, getToken, BASE_URL } from "@/lib/api";
 import { useEmployee } from "@/hooks/useEmployee";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
@@ -52,7 +52,7 @@ function DashboardPage() {
 
       let takenCasual = 0;
       try {
-        const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+        const BASE = BASE_URL;
         const token = getToken();
         const leavesRes = await fetch(`${BASE}/api/leaves`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
         if (leavesRes.ok) {

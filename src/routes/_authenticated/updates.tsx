@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Camera, ImagePlus, Loader2, Send, X, ClipboardList, ImageIcon } from "lucide-react";
-import { getToken } from "@/lib/api";
+import { getToken, BASE_URL } from "@/lib/api";
 import { useEmployee } from "@/hooks/useEmployee";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
@@ -41,7 +41,7 @@ function UpdatesPage() {
     if (!employee) return;
     setFetchingHistory(true);
     try {
-      const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+      const BASE = BASE_URL;
       const token = getToken();
       const res = await fetch(`${BASE}/api/daily-updates`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -121,7 +121,7 @@ function UpdatesPage() {
       const uploadedPaths = await Promise.all(uploadPromises);
 
       // 2. Save record to DB via API
-      const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+      const BASE = BASE_URL;
       const token = getToken();
       const res = await fetch(`${BASE}/api/daily-updates`, {
         method: "POST",

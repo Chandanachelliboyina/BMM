@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiMe, getToken } from "@/lib/api";
+import { apiMe, getToken, BASE_URL } from "@/lib/api";
 import { toast } from "sonner";
 import { FileText, Plus, Loader2, UploadCloud, ImageIcon } from "lucide-react";
 
@@ -32,7 +32,7 @@ function ReportsPage() {
     queryFn: async () => {
       const emp = await apiMe();
       if (!emp) throw new Error("Not authenticated");
-      const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+      const BASE = BASE_URL;
       const token = getToken();
       const res = await fetch(`${BASE}/api/reports`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -65,7 +65,7 @@ function ReportsPage() {
         if (image2) imgUrl2 = await uploadImage(image2);
       }
 
-      const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+      const BASE = BASE_URL;
       const token = getToken();
       const res = await fetch(`${BASE}/api/reports`, {
         method: "POST",

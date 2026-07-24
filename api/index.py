@@ -15,8 +15,8 @@ import certifi
 from contextlib import asynccontextmanager
 
 # Load .env — works locally; on Vercel, env vars are injected by the platform
-load_dotenv()
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"), override=False)
+load_dotenv(override=True)
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"), override=True)
 
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
@@ -321,6 +321,35 @@ async def employee_count(current: dict = Depends(get_current_employee)):
     count = await db.employees.count_documents({})
     return {"count": count}
 
+@app.get("/api/employees")
+async def get_all_employees(current: dict = Depends(get_current_employee)):
+    """Fetch all employees (Admin only)"""
+    if current.get("role", "").upper() != "ADMIN":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    records = []
+    async for emp in db.employees.find({}, {"password_hash": 0}, sort=[("full_name", 1)]):
+        emp["id"] = str(emp.pop("_id"))
+        records.append(emp)
+    return records
+
+@app.put("/api/employees/{employee_id}/allow-late-signin")
+async def toggle_late_signin(employee_id: str, payload: dict, current: dict = Depends(get_current_employee)):
+    """Admin only: Toggle late signin allowance for an employee"""
+    if current.get("role", "").upper() != "ADMIN":
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    allow = payload.get("allow_late_signin", False)
+    
+    result = await db.employees.update_one(
+        {"employee_id": employee_id},
+        {"$set": {"allow_late_signin": allow}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Employee not found")
+        
+    return {"message": "Late sign-in updated", "allow_late_signin": allow}
+
+
 # ── Attendance ─────────────────────────────────────────────────────────────────
 
 @app.post("/api/attendance/checkin", status_code=201)
@@ -565,6 +594,81 @@ async def get_daily_updates(current: dict = Depends(get_current_employee)):
     return records
 
 
+# ── Notifications ─────────────────────────────────────────────────────────────
+
+class NotificationIn(BaseModel):
+    employee_id: str
+    title: str
+    message: str
+    type: str
+
+@app.post("/api/notifications", status_code=201)
+async def create_notification(req: NotificationIn, current: dict = Depends(get_current_employee)):
+    if current.get("role", "").upper() != "ADMIN":
+        raise HTTPException(status_code=403, detail="Only Admins can create notifications")
+    
+    now_iso = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "employee_id": req.employee_id,
+        "title": req.title,
+        "message": req.message,
+        "type": req.type,
+        "read": False,
+        "created_at": now_iso,
+    }
+    result = await db.notifications.insert_one(doc)
+    return {"id": str(result.inserted_id)}
+
+@app.get("/api/notifications")
+async def get_notifications(current: dict = Depends(get_current_employee)):
+    import re
+    # Match employee_id case-insensitively just in case
+    query = {"employee_id": re.compile(f"^{current['employee_id']}$", re.IGNORECASE)}
+    
+    records = []
+    # Fetch all, sorted by created_at desc, max 50
+    async for r in db.notifications.find(query, sort=[("created_at", -1)]).limit(50):
+        r["id"] = str(r.pop("_id"))
+        # Ensure read is a boolean (handle older records without read field)
+        r["read"] = r.get("read", False)
+        # Ensure type exists
+        r["type"] = r.get("type", "info")
+        
+        # Ensure created_at is string for frontend
+        if isinstance(r.get("created_at"), datetime):
+            r["created_at"] = r["created_at"].isoformat()
+            
+        # Ignore deleted ones if the old schema had isDeleted
+        if r.get("isDeleted"):
+            continue
+            
+        records.append(r)
+    return records
+
+@app.put("/api/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: str, current: dict = Depends(get_current_employee)):
+    try:
+        obj_id = ObjectId(notification_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid notification ID")
+    
+    import re
+    result = await db.notifications.update_one(
+        {"_id": obj_id, "employee_id": re.compile(f"^{current['employee_id']}$", re.IGNORECASE)},
+        {"$set": {"read": True}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found or already read")
+    return {"message": "Marked as read"}
+
+@app.put("/api/notifications/read-all")
+async def mark_all_notifications_read(current: dict = Depends(get_current_employee)):
+    import re
+    await db.notifications.update_many(
+        {"employee_id": re.compile(f"^{current['employee_id']}$", re.IGNORECASE), "read": False},
+        {"$set": {"read": True}}
+    )
+    return {"message": "All marked as read"}
 # ── Cron Jobs ─────────────────────────────────────────────────────────────────
 
 @app.get("/api/cron/daily")

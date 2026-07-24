@@ -132,6 +132,7 @@ export interface Employee {
   targets?: string | null;
   profile_photo_b64?: string | null;
   joining_date?: string | null;
+  allow_late_signin?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -243,6 +244,54 @@ export async function apiAttendanceToday(): Promise<AttendanceRecord | null> {
 
 export async function apiAttendanceHistory(): Promise<AttendanceRecord[]> {
   return request<AttendanceRecord[]>("/api/attendance/history");
+}
+
+// ── Employees Admin ─────────────────────────────────────────────────────────────
+
+export async function apiGetEmployees(): Promise<Employee[]> {
+  return request<Employee[]>("/api/employees");
+}
+
+export async function apiToggleLateSignin(employeeId: string, allow: boolean): Promise<{ message: string; allow_late_signin: boolean }> {
+  return request<{ message: string; allow_late_signin: boolean }>(`/api/employees/${employeeId}/allow-late-signin`, {
+    method: "PUT",
+    body: JSON.stringify({ allow_late_signin: allow }),
+  });
+}
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+export interface DBNotification {
+  id: string;
+  employee_id: string;
+  title: string;
+  message: string;
+  type: "info" | "success" | "warning";
+  read: boolean;
+  created_at: string;
+}
+
+export async function apiCreateNotification(data: { employee_id: string; title: string; message: string; type: string }): Promise<{ id: string }> {
+  return request<{ id: string }>("/api/notifications", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function apiGetNotifications(): Promise<DBNotification[]> {
+  return request<DBNotification[]>("/api/notifications");
+}
+
+export async function apiMarkNotificationRead(id: string): Promise<{ message: string }> {
+  return request<{ message: string }>(`/api/notifications/${id}/read`, {
+    method: "PUT",
+  });
+}
+
+export async function apiMarkAllNotificationsRead(): Promise<{ message: string }> {
+  return request<{ message: string }>("/api/notifications/read-all", {
+    method: "PUT",
+  });
 }
 
 // ── Utils ─────────────────────────────────────────────────────────────────────

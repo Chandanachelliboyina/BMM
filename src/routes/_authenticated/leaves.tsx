@@ -310,7 +310,13 @@ function LeavesPage() {
                         }`}>
                           {leave.leave_type}
                         </div>
-                        <div className="text-xs text-green-600 bg-green-50 dark:bg-green-950/30 px-2 py-0.5 rounded-full border border-green-200 dark:border-green-900">
+                        <div className={`text-xs px-2 py-0.5 rounded-full border ${
+                          leave.status === "Rejected" 
+                            ? "text-red-600 bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900"
+                            : leave.status === "Pending"
+                            ? "text-yellow-600 bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-900"
+                            : "text-green-600 bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-900"
+                        }`}>
                           {leave.status}
                         </div>
                       </div>

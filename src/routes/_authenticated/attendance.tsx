@@ -155,7 +155,7 @@ function AttendancePage() {
   const currentMinute = now.getMinutes();
   const timeInMinutes = currentHour * 60 + currentMinute;
   
-  const isWithinCheckinWindow = timeInMinutes >= (9 * 60) && timeInMinutes <= (10 * 60);
+  const isWithinCheckinWindow = timeInMinutes >= (9 * 60) && timeInMinutes <= (10 * 60) || !!employee?.allow_late_signin;
   const isAfterCheckoutTime = timeInMinutes >= (18 * 60);
 
   const canSubmit = (!isCheckedIn && isWithinCheckinWindow) || (isCheckedIn && !isCheckedOut && isAfterCheckoutTime);

@@ -356,14 +356,71 @@ async def toggle_late_signin(employee_id: str, payload: dict, current: dict = De
 async def checkin(req: CheckinRequest, current: dict = Depends(get_current_employee)):
     now = datetime.now(timezone.utc)
     
+    # IST is UTC+5:30
+    ist_tz = timezone(timedelta(hours=5, minutes=30))
+    now_ist = now.astimezone(ist_tz)
+    
     # Sunday holiday check
-    if now.weekday() == 6:
+    if now_ist.weekday() == 6:
         raise HTTPException(status_code=400, detail="Today is Sunday (Holiday). Attendance cannot be marked.")
         
-    today = now.strftime("%Y-%m-%d")
+    today = now_ist.strftime("%Y-%m-%d")
+    
+    # ── Time Constraint Logic ──
+    # Regular sign-in: 09:00 to 10:00
+    if now_ist.hour < 9:
+        raise HTTPException(status_code=400, detail="Check-in starts at 9:00 AM.")
+        
+    allow_late = current.get("allow_late_signin", False)
+    
+    if now_ist.hour >= 10:
+        # If it's exactly 10:00:xx, we treat it as past 10 AM limit 
+        if not allow_late or str(allow_late).lower() == "false":
+            raise HTTPException(status_code=403, detail="Sign-in time is over (10:00 AM). Please contact Admin for permission.")
+        else:
+            # Late signin allowed up to the specified time string, e.g., "11:30"
+            try:
+                allowed_hour, allowed_minute = map(int, str(allow_late).split(":"))
+                is_late = False
+                if now_ist.hour > allowed_hour:
+                    is_late = True
+                elif now_ist.hour == allowed_hour and now_ist.minute > allowed_minute:
+                    is_late = True
+                    
+                if is_late:
+                    # Explicitly mark absent
+                    absent_doc = {
+                        "employee_id": current["employee_id"],
+                        "employee_name": req.employee_name,
+                        "role": req.role,
+                        "login_date": today,
+                        "login_time": None,
+                        "logout_time": None,
+                        "attendance_status": "Absent",
+                        "remarks": f"Marked absent (tried to sign in after allowed late time {allow_late}).",
+                        "created_at": now.isoformat(),
+                    }
+                    existing_absent = await db.attendance.find_one({"employee_id": current["employee_id"], "login_date": today})
+                    if not existing_absent:
+                        await db.attendance.insert_one(absent_doc)
+                    
+                    # Reset the flag so they can't try again
+                    await db.employees.update_one(
+                        {"employee_id": current["employee_id"]},
+                        {"$set": {"allow_late_signin": False}}
+                    )
+                    raise HTTPException(status_code=403, detail=f"Late sign-in period ({allow_late}) is over. Marked as absent.")
+            except ValueError:
+                # Fallback if allow_late is malformed
+                if now_ist.hour > 10 or (now_ist.hour == 10 and now_ist.minute > 30):
+                    raise HTTPException(status_code=403, detail="Late sign-in period (10:30 AM) is over.")
+                
+    # ───────────────────────────
+        
     existing = await db.attendance.find_one({"employee_id": current["employee_id"], "login_date": today})
     if existing:
         raise HTTPException(status_code=409, detail="Attendance already marked for today")
+        
     now_iso = now.isoformat()
     doc = {
         "employee_id": current["employee_id"],
@@ -384,6 +441,14 @@ async def checkin(req: CheckinRequest, current: dict = Depends(get_current_emplo
         "created_at": now_iso,
     }
     result = await db.attendance.insert_one(doc)
+    
+    # If late signin was used, automatically revoke it for next time
+    if allow_late:
+        await db.employees.update_one(
+            {"employee_id": current["employee_id"]},
+            {"$set": {"allow_late_signin": False}}
+        )
+        
     return {"id": str(result.inserted_id), "login_time": now_iso, "message": "Attendance marked"}
 
 @app.put("/api/attendance/checkout")

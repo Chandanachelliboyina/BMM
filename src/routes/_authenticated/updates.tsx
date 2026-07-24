@@ -82,31 +82,43 @@ function UpdatesPage() {
       setGettingLocation(false);
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        let address = "";
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}&zoom=18&addressdetails=1&accept-language=te`);
-          const data = await res.json();
-          const addr = data.address || {};
-          const conciseName = addr.village || addr.suburb || addr.neighbourhood || addr.town || addr.city || addr.county || data.name;
-          address = conciseName ? conciseName : (data.display_name || "");
-        } catch(e) { }
-        
-        setLocation({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          address: address
-        });
-        setGettingLocation(false);
-      },
-      (error) => {
-        console.error("Error getting location", error);
-        toast.error("Failed to get location. Please ensure location services are enabled.");
-        setGettingLocation(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+
+    const getPos = (options: PositionOptions): Promise<GeolocationPosition> => {
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, options);
+      });
+    };
+
+    try {
+      let position: GeolocationPosition;
+      try {
+        // Try high accuracy first (wait up to 10s)
+        position = await getPos({ enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 });
+      } catch (err) {
+        // Fallback to low accuracy (wait up to 10s)
+        console.warn("High accuracy GPS failed, trying low accuracy...", err);
+        position = await getPos({ enableHighAccuracy: false, timeout: 10000, maximumAge: 30000 });
+      }
+
+      let address = "";
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}&zoom=18&addressdetails=1&accept-language=te`);
+        const data = await res.json();
+        const addr = data.address || {};
+        const conciseName = addr.village || addr.suburb || addr.neighbourhood || addr.town || addr.city || addr.county || data.name;
+        address = conciseName ? conciseName : (data.display_name || "");
+      } catch(e) { }
+      
+      setLocation({
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        address: address
+      });
+    } catch (error: any) {
+      console.error("Error getting location", error);
+      toast.error("Failed to get location. Please ensure GPS is turned on and permissions are granted.");
+    }
+    setGettingLocation(false);
   };
 
   const startCamera = async (mode = facingMode) => {
@@ -452,12 +464,16 @@ function UpdatesPage() {
       {isCameraOpen && (
         <div className="fixed inset-0 z-[100] flex flex-col bg-black">
           <div className="flex justify-between items-center p-4 bg-gradient-to-b from-black/80 to-transparent absolute top-0 left-0 right-0 z-10 text-white">
-            <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full backdrop-blur-sm">
+            <button 
+              onClick={() => { if (!gettingLocation) getLocation(); }}
+              className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full backdrop-blur-sm cursor-pointer hover:bg-black/60 transition"
+              title="Click to retry location"
+            >
               <MapPin className={`w-4 h-4 ${gettingLocation ? "animate-pulse text-yellow-400" : location ? "text-green-400" : "text-red-400"}`} />
               <span className="text-xs font-medium">
-                {gettingLocation ? "Locating..." : location ? "Location Acquired" : "Location Unknown"}
+                {gettingLocation ? "Locating..." : location ? "Location Acquired" : "Tap to Retry Location"}
               </span>
-            </div>
+            </button>
             <button onClick={stopCamera} className="p-2 bg-black/40 rounded-full hover:bg-black/60 backdrop-blur-sm transition">
               <X className="w-6 h-6" />
             </button>

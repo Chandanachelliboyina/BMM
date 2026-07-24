@@ -88,7 +88,9 @@ function UpdatesPage() {
         try {
           const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}&zoom=18&addressdetails=1`);
           const data = await res.json();
-          address = data.display_name || "";
+          const addr = data.address || {};
+          const conciseName = addr.village || addr.suburb || addr.neighbourhood || addr.town || addr.city || addr.county || data.name;
+          address = conciseName ? conciseName : (data.display_name || "");
         } catch(e) { }
         
         setLocation({

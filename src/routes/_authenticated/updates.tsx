@@ -47,6 +47,9 @@ function UpdatesPage() {
   const [gettingLocation, setGettingLocation] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  
+  // Lightbox state
+  const [viewImage, setViewImage] = useState<string | null>(null);
 
   const fetchHistory = async () => {
     if (!employee) return;
@@ -336,8 +339,8 @@ function UpdatesPage() {
                 {previewUrls.length > 0 ? (
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-4">
                     {previewUrls.map((url, i) => (
-                      <div key={url} className="relative aspect-square rounded-lg border overflow-hidden group bg-muted">
-                        <img src={url} alt={`Preview ${i}`} className="w-full h-full object-cover" />
+                      <div key={url} className="relative aspect-square rounded-lg border overflow-hidden group bg-black/5 dark:bg-black/40">
+                        <img src={url} alt={`Preview ${i}`} className="w-full h-full object-contain" />
                         <button
                           onClick={() => removeFile(i)}
                           className="absolute top-2 right-2 bg-black/60 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black"
@@ -425,9 +428,13 @@ function UpdatesPage() {
                     {record.signedUrls && record.signedUrls.length > 0 && (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {record.signedUrls.map((url, i) => (
-                          <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block aspect-square rounded-md overflow-hidden border hover:opacity-90 transition-opacity">
-                            <img src={url} alt={`Update ${i}`} className="w-full h-full object-cover" />
-                          </a>
+                          <button 
+                            key={i} 
+                            onClick={() => setViewImage(url)} 
+                            className="block aspect-square rounded-md overflow-hidden border hover:opacity-90 transition-opacity bg-black/5 dark:bg-black/40"
+                          >
+                            <img src={url} alt={`Update ${i}`} className="w-full h-full object-contain" />
+                          </button>
                         ))}
                       </div>
                     )}
@@ -491,6 +498,23 @@ function UpdatesPage() {
             
             <div className="w-14"></div> {/* Placeholder for balance */}
           </div>
+        </div>
+      )}
+
+      {/* Image Viewer Lightbox */}
+      {viewImage && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 p-4">
+          <button 
+            onClick={() => setViewImage(null)}
+            className="absolute top-4 right-4 p-2 bg-black/50 text-white rounded-full hover:bg-black/70 transition"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img 
+            src={viewImage} 
+            alt="Full view" 
+            className="max-w-full max-h-full object-contain rounded-md" 
+          />
         </div>
       )}
     </AppShell>

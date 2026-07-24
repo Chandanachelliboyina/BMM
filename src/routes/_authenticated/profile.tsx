@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   head: () => ({ meta: [{ title: "My Profile — NGO Connect" }] }),
@@ -24,7 +25,7 @@ function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState({ 
-    email: "", mobile_number: "", address: "", village: "",
+    email: "", mobile_number: "", role: "", address: "", village: "",
     head: "", donor_name: "", department: "", 
     target_villages: "", target_mandals: "", targets: "" 
   });
@@ -34,6 +35,7 @@ function ProfilePage() {
       setForm({
         email: employee.email,
         mobile_number: employee.mobile_number,
+        role: employee.role ?? "",
         address: employee.address ?? "",
         village: employee.village ?? "",
         head: employee.head ?? "",
@@ -53,6 +55,7 @@ function ProfilePage() {
       await apiUpdateProfile({
         email: form.email.trim().toLowerCase(),
         mobile_number: form.mobile_number.trim(),
+        role: form.role || undefined,
         address: form.address || undefined,
         village: form.village || undefined,
         head: form.head || undefined,
@@ -76,6 +79,7 @@ function ProfilePage() {
       setForm({
         email: employee.email,
         mobile_number: employee.mobile_number,
+        role: employee.role ?? "",
         address: employee.address ?? "",
         village: employee.village ?? "",
         head: employee.head ?? "",
@@ -131,7 +135,7 @@ function ProfilePage() {
             </div>
             <div className="mt-6 space-y-3 text-sm text-left">
               <Row icon={IdCard} label="Employee ID (locked)" value={employee.employee_id} />
-              <Row icon={Briefcase} label="Position (locked)" value={employee.role} />
+              {!isEditing && <Row icon={Briefcase} label="Position" value={employee.role} />}
               <Row icon={Building2} label="Office" value={employee.office_location ?? "—"} />
             </div>
           </Card>
@@ -186,6 +190,31 @@ function ProfilePage() {
 
             <div className="mt-8 pt-6 border-t grid sm:grid-cols-2 gap-6">
               <h3 className="font-semibold text-lg sm:col-span-2">Work Information</h3>
+              
+              {isEditing && (
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Position</Label>
+                  <Select value={form.role} onValueChange={(val) => setForm({ ...form, role: val })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a position" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Project director">Project director</SelectItem>
+                      <SelectItem value="MIS Project documention co-ordinator">MIS Project documention co-ordinator</SelectItem>
+                      <SelectItem value="Accountant cum computer operator">Accountant cum computer operator</SelectItem>
+                      <SelectItem value="Mandal level implementor">Mandal level implementor</SelectItem>
+                      <SelectItem value="Community organizer">Community organizer</SelectItem>
+                      <SelectItem value="Office assistant">Office assistant</SelectItem>
+                      <SelectItem value="Training and capacity building lead">Training and capacity building lead</SelectItem>
+                      <SelectItem value="Operational head">Operational head</SelectItem>
+                      <SelectItem value="Women programme co-ordinator">Women programme co-ordinator</SelectItem>
+                      <SelectItem value="Health programe co-ordinator">Health programe co-ordinator</SelectItem>
+                      <SelectItem value="Environment and WASH programme co-ordinator">Environment and WASH programme co-ordinator</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <Label>Head</Label>
                 {isEditing ? <Input value={form.head} onChange={(e) => setForm({ ...form, head: e.target.value })} /> : <p className="font-medium bg-muted/30 p-2.5 rounded-md border">{form.head || "—"}</p>}

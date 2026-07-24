@@ -164,6 +164,7 @@ class LoginRequest(BaseModel):
 class UpdateProfileRequest(BaseModel):
     email: Optional[str] = None
     mobile_number: Optional[str] = None
+    role: Optional[str] = None
     address: Optional[str] = None
     village: Optional[str] = None
     head: Optional[str] = None
@@ -281,6 +282,8 @@ async def update_profile(req: UpdateProfileRequest, current: dict = Depends(get_
         updates["email"] = req.email.strip().lower()
     if req.mobile_number is not None:
         updates["mobile_number"] = req.mobile_number.strip()
+    if req.role is not None:
+        updates["role"] = req.role.strip()
     if req.address is not None:
         updates["address"] = req.address or None
     if req.village is not None:

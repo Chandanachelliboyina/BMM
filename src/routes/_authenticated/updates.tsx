@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { Camera, ImagePlus, Loader2, Send, X, ClipboardList, ImageIcon } from "lucide-react";
+import { Camera, ImagePlus, Loader2, Send, X, ClipboardList, ImageIcon, SwitchCamera, MapPin } from "lucide-react";
 import { getToken, BASE_URL } from "@/lib/api";
 import { useEmployee } from "@/hooks/useEmployee";
 import { AppShell } from "@/components/AppShell";
@@ -37,6 +37,17 @@ function UpdatesPage() {
   const [history, setHistory] = useState<UpdateRecord[]>([]);
   const [fetchingHistory, setFetchingHistory] = useState(true);
 
+  // Camera & GPS State
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [cameraError, setCameraError] = useState("");
+  const [facingMode, setFacingMode] = useState<"user" | "environment">(
+    typeof window !== "undefined" && window.innerWidth < 768 ? "environment" : "user"
+  );
+  const [location, setLocation] = useState<{lat: number; lng: number} | null>(null);
+  const [gettingLocation, setGettingLocation] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
   const fetchHistory = async () => {
     if (!employee) return;
     setFetchingHistory(true);
@@ -60,6 +71,129 @@ function UpdatesPage() {
     fetchHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employee]);
+
+  const getLocation = async () => {
+    setGettingLocation(true);
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      setGettingLocation(false);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+        setGettingLocation(false);
+      },
+      (error) => {
+        console.error("Error getting location", error);
+        toast.error("Failed to get location. Please ensure location services are enabled.");
+        setGettingLocation(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
+  const startCamera = async (mode = facingMode) => {
+    setIsCameraOpen(true);
+    setCameraError("");
+    if (!location) getLocation();
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: mode },
+        audio: false,
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+    } catch (err: any) {
+      console.error("Error accessing camera:", err);
+      setCameraError("Could not access camera. Please check permissions.");
+      toast.error("Camera access denied.");
+    }
+  };
+
+  const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach((track) => track.stop());
+    }
+    setIsCameraOpen(false);
+  };
+
+  const toggleCamera = () => {
+    const newMode = facingMode === "user" ? "environment" : "user";
+    setFacingMode(newMode);
+    stopCamera();
+    setTimeout(() => startCamera(newMode), 300);
+  };
+
+  const capturePhoto = () => {
+    if (selectedFiles.length >= MAX_IMAGES) {
+      toast.error(`You can only upload up to ${MAX_IMAGES} images.`);
+      return;
+    }
+
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+
+      if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      // Draw video frame to canvas
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Add Watermark
+      const now = new Date();
+      const dateStr = format(now, "dd/MM/yyyy");
+      const timeStr = format(now, "hh:mm:ss a");
+      const locStr = location ? `Lat: ${location.lat.toFixed(6)}, Lng: ${location.lng.toFixed(6)}` : "Location: Unknown";
+
+      // Calculate dynamic font size and spacing
+      const fontSize = Math.max(16, Math.floor(canvas.width * 0.025));
+      context.font = `${fontSize}px sans-serif`;
+      
+      const padding = 15;
+      const lineHeight = fontSize * 1.4;
+      const barHeight = (lineHeight * 2) + (padding * 2);
+
+      // Draw semi-transparent background bar at the bottom
+      context.fillStyle = "rgba(0, 0, 0, 0.6)";
+      context.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
+
+      // Draw text
+      context.fillStyle = "white";
+      context.textBaseline = "top"; // Ensure text is drawn downwards from the Y coordinate
+      context.textAlign = "center"; // Center the text horizontally
+      
+      const startY = canvas.height - barHeight + padding;
+      const centerX = canvas.width / 2;
+      context.fillText(`Date: ${dateStr}   Time: ${timeStr}`, centerX, startY);
+      context.fillText(locStr, centerX, startY + lineHeight);
+
+      // Convert canvas to Data URL
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+      
+      fetch(dataUrl)
+        .then(res => res.blob())
+        .then(blob => {
+          const file = new File([blob], `capture-${Date.now()}.jpg`, { type: "image/jpeg" });
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          handleFiles(dt.files);
+          stopCamera();
+        });
+    }
+  };
 
   const handleFiles = (files: FileList | null) => {
     if (!files) return;
@@ -175,22 +309,17 @@ function UpdatesPage() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-sm font-semibold">Images ({selectedFiles.length}/{MAX_IMAGES})</label>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => fileRef.current?.click()}
-                    disabled={selectedFiles.length >= MAX_IMAGES || submitting}
-                  >
-                    <ImagePlus className="w-4 h-4 mr-2" /> Add Images
-                  </Button>
-                  <input 
-                    type="file" 
-                    ref={fileRef} 
-                    hidden 
-                    multiple 
-                    accept="image/*" 
-                    onChange={(e) => handleFiles(e.target.files)}
-                  />
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => startCamera()}
+                      disabled={selectedFiles.length >= MAX_IMAGES || submitting}
+                      type="button"
+                    >
+                      <Camera className="w-4 h-4 mr-2" /> Take Photo
+                    </Button>
+                  </div>
                 </div>
                 
                 {previewUrls.length > 0 ? (
@@ -208,8 +337,9 @@ function UpdatesPage() {
                     ))}
                     {selectedFiles.length < MAX_IMAGES && (
                       <button 
-                        onClick={() => fileRef.current?.click()}
+                        onClick={() => startCamera()}
                         className="aspect-square rounded-lg border-2 border-dashed border-muted-foreground/20 flex flex-col items-center justify-center text-muted-foreground hover:bg-muted/50 hover:border-primary/50 transition-colors"
+                        type="button"
                       >
                         <Camera className="w-6 h-6 mb-2 opacity-50" />
                         <span className="text-xs font-medium">Add more</span>
@@ -218,12 +348,13 @@ function UpdatesPage() {
                   </div>
                 ) : (
                   <button 
-                    onClick={() => fileRef.current?.click()}
+                    onClick={() => startCamera()}
                     className="w-full py-12 rounded-xl border-2 border-dashed border-muted-foreground/25 bg-muted/20 flex flex-col items-center justify-center text-muted-foreground hover:bg-muted/50 hover:border-primary/50 transition-colors"
+                    type="button"
                   >
-                    <ImageIcon className="w-10 h-10 mb-3 opacity-40" />
-                    <p className="font-medium text-foreground/80 mb-1">Click to browse images</p>
-                    <p className="text-xs">Upload up to 6 images (Max 5MB each)</p>
+                    <Camera className="w-10 h-10 mb-3 opacity-40" />
+                    <p className="font-medium text-foreground/80 mb-1">Click to take a photo</p>
+                    <p className="text-xs">Capture up to {MAX_IMAGES} images</p>
                   </button>
                 )}
               </div>
@@ -293,6 +424,61 @@ function UpdatesPage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Camera Fullscreen Overlay */}
+      {isCameraOpen && (
+        <div className="fixed inset-0 z-[100] flex flex-col bg-black">
+          <div className="flex justify-between items-center p-4 bg-gradient-to-b from-black/80 to-transparent absolute top-0 left-0 right-0 z-10 text-white">
+            <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full backdrop-blur-sm">
+              <MapPin className={`w-4 h-4 ${gettingLocation ? "animate-pulse text-yellow-400" : location ? "text-green-400" : "text-red-400"}`} />
+              <span className="text-xs font-medium">
+                {gettingLocation ? "Locating..." : location ? "Location Acquired" : "Location Unknown"}
+              </span>
+            </div>
+            <button onClick={stopCamera} className="p-2 bg-black/40 rounded-full hover:bg-black/60 backdrop-blur-sm transition">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          
+          <div className="flex-1 relative flex items-center justify-center overflow-hidden bg-black">
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover max-h-[90vh]"
+              playsInline
+              autoPlay
+            />
+            <canvas ref={canvasRef} className="hidden" />
+            
+            {cameraError && (
+              <div className="absolute inset-0 flex items-center justify-center p-6 text-center z-20">
+                <div className="bg-white p-6 rounded-xl max-w-sm w-full mx-auto shadow-2xl">
+                  <p className="text-red-500 font-semibold mb-4">{cameraError}</p>
+                  <Button onClick={stopCamera} variant="outline" className="w-full text-black">Close Camera</Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 bg-gradient-to-t from-black via-black/80 to-transparent absolute bottom-0 left-0 right-0 flex justify-center items-center gap-12 pb-12 z-10">
+            <button 
+              onClick={toggleCamera}
+              className="p-3 bg-white/10 rounded-full text-white hover:bg-white/20 backdrop-blur-md transition"
+              title="Switch Camera"
+            >
+              <SwitchCamera className="w-7 h-7" />
+            </button>
+
+            <button 
+              onClick={capturePhoto}
+              className="w-20 h-20 rounded-full bg-white/20 border-4 border-white flex items-center justify-center active:scale-95 transition-transform disabled:opacity-50"
+            >
+              <div className="w-16 h-16 rounded-full bg-white border-2 border-black/10"></div>
+            </button>
+            
+            <div className="w-14"></div> {/* Placeholder for balance */}
           </div>
         </div>
       )}

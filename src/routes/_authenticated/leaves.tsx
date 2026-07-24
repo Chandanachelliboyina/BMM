@@ -147,7 +147,6 @@ function LeavesPage() {
           <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900">
             <CardHeader className="pb-2">
               <CardTitle className="text-blue-800 dark:text-blue-300">Casual Leaves</CardTitle>
-              <CardDescription className="text-blue-600/80 dark:text-blue-400/80">April {startYear} to March {endYear}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-4 text-center mt-2">
@@ -170,7 +169,6 @@ function LeavesPage() {
           <Card className="bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900">
             <CardHeader className="pb-2">
               <CardTitle className="text-purple-800 dark:text-purple-300">Sick Leaves</CardTitle>
-              <CardDescription className="text-purple-600/80 dark:text-purple-400/80">April {startYear} to March {endYear}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-4 text-center mt-2">
@@ -189,11 +187,6 @@ function LeavesPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
-
-        <div className="flex items-start gap-2 text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
-          <Info className="h-5 w-5 shrink-0 text-blue-500" />
-          <p>Since {passedMonthsInFinYear} months of the financial year are already over, you have {totalLeaves} Casual Leaves and {totalLeaves} Sick Leaves remaining for the period of April {startYear} to March {endYear}.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

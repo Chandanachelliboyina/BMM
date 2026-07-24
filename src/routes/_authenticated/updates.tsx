@@ -105,8 +105,15 @@ function UpdatesPage() {
         const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}&zoom=18&addressdetails=1&accept-language=te`);
         const data = await res.json();
         const addr = data.address || {};
-        const conciseName = addr.village || addr.suburb || addr.neighbourhood || addr.town || addr.city || addr.county || data.name;
-        address = conciseName ? conciseName : (data.display_name || "");
+        const conciseName = addr.village || addr.suburb || addr.neighbourhood || addr.town || addr.city || data.name;
+        const district = addr.state_district || addr.county || addr.district;
+        let finalLoc = "";
+        if (conciseName && district && conciseName !== district) {
+          finalLoc = `${conciseName}, ${district}`;
+        } else {
+          finalLoc = conciseName || district || data.display_name || "";
+        }
+        address = finalLoc;
       } catch(e) { }
       
       setLocation({

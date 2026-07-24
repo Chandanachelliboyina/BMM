@@ -86,7 +86,7 @@ function UpdatesPage() {
       async (position) => {
         let address = "";
         try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}&zoom=18&addressdetails=1`);
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}&zoom=18&addressdetails=1&accept-language=te`);
           const data = await res.json();
           const addr = data.address || {};
           const conciseName = addr.village || addr.suburb || addr.neighbourhood || addr.town || addr.city || addr.county || data.name;
@@ -493,6 +493,7 @@ function UpdatesPage() {
 
             <button 
               onClick={capturePhoto}
+              disabled={gettingLocation}
               className="w-20 h-20 rounded-full bg-white/20 border-4 border-white flex items-center justify-center active:scale-95 transition-transform disabled:opacity-50"
             >
               <div className="w-16 h-16 rounded-full bg-white border-2 border-black/10"></div>

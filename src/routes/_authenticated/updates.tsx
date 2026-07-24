@@ -43,7 +43,7 @@ function UpdatesPage() {
   const [facingMode, setFacingMode] = useState<"user" | "environment">(
     typeof window !== "undefined" && window.innerWidth < 768 ? "environment" : "user"
   );
-  const [location, setLocation] = useState<{lat: number; lng: number} | null>(null);
+  const [location, setLocation] = useState<{lat: number; lng: number, address?: string} | null>(null);
   const [gettingLocation, setGettingLocation] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -80,10 +80,18 @@ function UpdatesPage() {
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
+        let address = "";
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}&zoom=18&addressdetails=1`);
+          const data = await res.json();
+          address = data.display_name || "";
+        } catch(e) { }
+        
         setLocation({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
+          address: address
         });
         setGettingLocation(false);
       },
@@ -156,15 +164,18 @@ function UpdatesPage() {
       const now = new Date();
       const dateStr = format(now, "dd/MM/yyyy");
       const timeStr = format(now, "hh:mm:ss a");
-      const locStr = location ? `Lat: ${location.lat.toFixed(6)}, Lng: ${location.lng.toFixed(6)}` : "Location: Unknown";
+      let locStr = location ? `Lat: ${location.lat.toFixed(6)}, Lng: ${location.lng.toFixed(6)}` : "Location: Unknown";
+      if (location?.address) {
+          locStr = location.address.substring(0, 80); // Truncate if too long
+      }
 
-      // Calculate dynamic font size and spacing
-      const fontSize = Math.max(16, Math.floor(canvas.width * 0.025));
-      context.font = `${fontSize}px sans-serif`;
+      // Calculate dynamic font size based on the smaller dimension to be readable on portrait and landscape
+      const fontSize = Math.max(20, Math.floor(Math.min(canvas.width, canvas.height) * 0.035));
+      context.font = `bold ${fontSize}px sans-serif`;
       
-      const padding = 15;
-      const lineHeight = fontSize * 1.4;
-      const barHeight = (lineHeight * 2) + (padding * 2);
+      const padding = Math.floor(fontSize * 0.8);
+      const lineHeight = fontSize * 1.5;
+      const barHeight = (lineHeight * 2.5) + (padding * 2);
 
       // Draw semi-transparent background bar at the bottom
       context.fillStyle = "rgba(0, 0, 0, 0.6)";
@@ -172,13 +183,13 @@ function UpdatesPage() {
 
       // Draw text
       context.fillStyle = "white";
-      context.textBaseline = "top"; // Ensure text is drawn downwards from the Y coordinate
-      context.textAlign = "center"; // Center the text horizontally
+      context.textBaseline = "top";
+      context.textAlign = "left"; // Left align is safer for long text
       
       const startY = canvas.height - barHeight + padding;
-      const centerX = canvas.width / 2;
-      context.fillText(`Date: ${dateStr}   Time: ${timeStr}`, centerX, startY);
-      context.fillText(locStr, centerX, startY + lineHeight);
+      const startX = padding;
+      context.fillText(`Date: ${dateStr}   Time: ${timeStr}`, startX, startY);
+      context.fillText(locStr, startX, startY + lineHeight);
 
       // Convert canvas to Data URL
       const dataUrl = canvas.toDataURL("image/jpeg", 0.9);

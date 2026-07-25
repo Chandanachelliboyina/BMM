@@ -941,11 +941,12 @@ async def daily_cron(database=Depends(get_db)):
     today = now.strftime("%Y-%m-%d")
     yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
 
-    # 1. On the 1st of every month, minus one casual leave and sick leave for everyone
+    # 1. On the 1st of every month, add one casual leave and sick leave for everyone
     if now.day == 1:
+        fin_year = get_current_fin_year()
         await database.employees.update_many(
             {},
-            {"$inc": {"casual_leaves": -1, "sick_leaves": -1}}
+            {"$inc": {f"leave_balances.{fin_year}.casual": 1, f"leave_balances.{fin_year}.sick": 1}}
         )
 
     # 2. Process yesterday's attendance (Absents and Incomplete)

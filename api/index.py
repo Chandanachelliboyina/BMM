@@ -123,7 +123,7 @@ async def get_current_employee(creds: HTTPAuthorizationCredentials = Depends(bea
     if not emp:
         raise HTTPException(status_code=401, detail="Employee not found")
     if emp.get("has_access", True) == False:
-        raise HTTPException(status_code=403, detail="Your access has been revoked by the administrator.")
+        raise HTTPException(status_code=403, detail="admin not give grant access to view your dashboard")
     emp["id"] = str(emp.pop("_id"))
     return emp
 
@@ -281,7 +281,7 @@ async def login(req: LoginRequest, database=Depends(get_db)):
     if not emp:
         raise HTTPException(status_code=401, detail="Invalid Employee ID or password")
     if emp.get("has_access", True) == False:
-        raise HTTPException(status_code=403, detail="Your access has been revoked by the administrator.")
+        raise HTTPException(status_code=403, detail="admin not give grant access to view your dashboard")
     if not verify_password(req.password, emp["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid Employee ID or password")
     token = create_token({"sub": emp_id})
@@ -369,6 +369,52 @@ async def toggle_late_signin(employee_id: str, payload: dict, current: dict = De
         raise HTTPException(status_code=404, detail="Employee not found")
         
     return {"message": "Late sign-in updated", "allow_late_signin": allow}
+
+
+@app.put("/api/employees/{employee_id}/access")
+async def toggle_access(employee_id: str, payload: dict, current: dict = Depends(get_current_employee)):
+    """Admin only: Toggle dashboard access for an employee"""
+    if current.get("role", "").upper() != "ADMIN":
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    has_access = payload.get("has_access", True)
+    
+    result = await db.employees.update_one(
+        {"employee_id": employee_id},
+        {"$set": {"has_access": has_access}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Employee not found")
+        
+    return {"message": "Access updated", "has_access": has_access}
+
+
+@app.put("/api/employees/{employee_id}/leaves")
+async def update_employee_leaves(employee_id: str, payload: dict, current: dict = Depends(get_current_employee)):
+    """Admin only: Update leave balances for an employee"""
+    if current.get("role", "").upper() != "ADMIN":
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    casual_leaves = payload.get("casual_leaves")
+    sick_leaves = payload.get("sick_leaves")
+    
+    updates = {}
+    if casual_leaves is not None:
+        updates["casual_leaves"] = int(casual_leaves)
+    if sick_leaves is not None:
+        updates["sick_leaves"] = int(sick_leaves)
+        
+    if not updates:
+        raise HTTPException(status_code=400, detail="No leave updates provided")
+        
+    result = await db.employees.update_one(
+        {"employee_id": employee_id},
+        {"$set": updates}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Employee not found")
+        
+    return {"message": "Leaves updated", "casual_leaves": updates.get("casual_leaves"), "sick_leaves": updates.get("sick_leaves")}
 
 
 # ── Attendance ─────────────────────────────────────────────────────────────────

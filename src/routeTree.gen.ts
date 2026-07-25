@@ -22,6 +22,7 @@ import { Route as AuthenticatedLogoutRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedLeavesRouteImport } from './routes/_authenticated/leaves'
 import { Route as AuthenticatedHomeRouteImport } from './routes/_authenticated/home'
 import { Route as AuthenticatedHistoryRouteImport } from './routes/_authenticated/history'
+import { Route as AuthenticatedDatabaseRouteImport } from './routes/_authenticated/database'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAttendanceRouteImport } from './routes/_authenticated/attendance'
 import { Route as AuthenticatedActivitiesRouteImport } from './routes/_authenticated/activities'
@@ -91,6 +92,11 @@ const AuthenticatedHistoryRoute = AuthenticatedHistoryRouteImport.update({
   path: '/history',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedDatabaseRoute = AuthenticatedDatabaseRouteImport.update({
+  id: '/database',
+  path: '/database',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -112,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/activities': typeof AuthenticatedActivitiesRoute
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/database': typeof AuthenticatedDatabaseRoute
   '/history': typeof AuthenticatedHistoryRoute
   '/home': typeof AuthenticatedHomeRoute
   '/leaves': typeof AuthenticatedLeavesRoute
@@ -129,6 +136,7 @@ export interface FileRoutesByTo {
   '/activities': typeof AuthenticatedActivitiesRoute
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/database': typeof AuthenticatedDatabaseRoute
   '/history': typeof AuthenticatedHistoryRoute
   '/home': typeof AuthenticatedHomeRoute
   '/leaves': typeof AuthenticatedLeavesRoute
@@ -148,6 +156,7 @@ export interface FileRoutesById {
   '/_authenticated/activities': typeof AuthenticatedActivitiesRoute
   '/_authenticated/attendance': typeof AuthenticatedAttendanceRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/database': typeof AuthenticatedDatabaseRoute
   '/_authenticated/history': typeof AuthenticatedHistoryRoute
   '/_authenticated/home': typeof AuthenticatedHomeRoute
   '/_authenticated/leaves': typeof AuthenticatedLeavesRoute
@@ -167,6 +176,7 @@ export interface FileRouteTypes {
     | '/activities'
     | '/attendance'
     | '/dashboard'
+    | '/database'
     | '/history'
     | '/home'
     | '/leaves'
@@ -184,6 +194,7 @@ export interface FileRouteTypes {
     | '/activities'
     | '/attendance'
     | '/dashboard'
+    | '/database'
     | '/history'
     | '/home'
     | '/leaves'
@@ -202,6 +213,7 @@ export interface FileRouteTypes {
     | '/_authenticated/activities'
     | '/_authenticated/attendance'
     | '/_authenticated/dashboard'
+    | '/_authenticated/database'
     | '/_authenticated/history'
     | '/_authenticated/home'
     | '/_authenticated/leaves'
@@ -315,6 +327,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedHistoryRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/database': {
+      id: '/_authenticated/database'
+      path: '/database'
+      fullPath: '/database'
+      preLoaderRoute: typeof AuthenticatedDatabaseRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
@@ -343,6 +362,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedActivitiesRoute: typeof AuthenticatedActivitiesRoute
   AuthenticatedAttendanceRoute: typeof AuthenticatedAttendanceRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedDatabaseRoute: typeof AuthenticatedDatabaseRoute
   AuthenticatedHistoryRoute: typeof AuthenticatedHistoryRoute
   AuthenticatedHomeRoute: typeof AuthenticatedHomeRoute
   AuthenticatedLeavesRoute: typeof AuthenticatedLeavesRoute
@@ -358,6 +378,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedActivitiesRoute: AuthenticatedActivitiesRoute,
   AuthenticatedAttendanceRoute: AuthenticatedAttendanceRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedDatabaseRoute: AuthenticatedDatabaseRoute,
   AuthenticatedHistoryRoute: AuthenticatedHistoryRoute,
   AuthenticatedHomeRoute: AuthenticatedHomeRoute,
   AuthenticatedLeavesRoute: AuthenticatedLeavesRoute,

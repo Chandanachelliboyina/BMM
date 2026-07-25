@@ -26,8 +26,9 @@ function DashboardPage() {
     todayTime: null as string | null,
     todayLogout: null as string | null,
     status: "Absent",
-    leaveBalance: 0,
-    leavePercentage: 0
+    status: "Absent",
+    casualLeaveBalance: 0,
+    sickLeaveBalance: 0
   });
   const [latestCard, setLatestCard] = useState<any>(null);
 
@@ -43,30 +44,6 @@ function DashboardPage() {
       const todayRow = data?.find((r) => r.login_date === today);
       const joined = employee.joining_date ? new Date(employee.joining_date) : new Date(employee.created_at || Date.now());
       const daysSince = Math.max(1, Math.ceil((Date.now() - joined.getTime()) / (1000 * 60 * 60 * 24)));
-      // Casual Leave Logic: dynamic based on financial year (starts April)
-      const now = new Date();
-      const currentMonth = now.getMonth();
-      const passedMonthsInFinYear = currentMonth >= 3 ? currentMonth - 3 : currentMonth + 9;
-      const initialLeaves = 12;
-      const currentTotalLeaves = initialLeaves - passedMonthsInFinYear;
-
-      let takenCasual = 0;
-      try {
-        const BASE = BASE_URL;
-        const token = getToken();
-        const leavesRes = await fetch(`${BASE}/api/leaves`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-        if (leavesRes.ok) {
-          const leaves = await leavesRes.json();
-          if (Array.isArray(leaves)) {
-            takenCasual = leaves.filter((l: any) => l.leave_type === "Casual").length;
-          }
-        }
-      } catch (e) { console.error(e); }
-
-      const absentDays = Math.max(0, daysSince - present);
-      const casualLeaveBalance = Math.max(0, currentTotalLeaves - takenCasual - absentDays);
-      const leavePercentage = Math.round((casualLeaveBalance / currentTotalLeaves) * 100) || 0;
-
       setStats({
         totalOrgEmployees: totalEmp || 0,
         present,
@@ -74,8 +51,8 @@ function DashboardPage() {
         todayTime: todayRow ? format(new Date(todayRow.login_time), "hh:mm a") : null,
         todayLogout: todayRow?.logout_time ? format(new Date(todayRow.logout_time), "hh:mm a") : null,
         status: todayRow ? (todayRow.logout_time ? "Checked Out" : "Checked In (Absent if no checkout)") : "Absent",
-        leaveBalance: casualLeaveBalance,
-        leavePercentage: leavePercentage
+        casualLeaveBalance: employee.casual_leaves ?? 0,
+        sickLeaveBalance: employee.sick_leaves ?? 0
       });
 
       if (data && data.length > 0) {
@@ -129,19 +106,34 @@ function DashboardPage() {
             <StatCard icon={CalendarX2} label="Absent Days" value={String(stats.absent)} sub="Estimated" tone="danger" />
           </div>
 
-          {/* Casual Leave Quick Action */}
-          <Card className="p-4 shadow-card mt-6 bg-warning/5 border-warning/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold flex items-center gap-2"><CalendarX2 className="w-5 h-5 text-warning" /> Casual Leave Management</h3>
-                <p className="text-sm text-muted-foreground mt-1">Current Balance: <span className="font-bold text-foreground">{stats.leaveBalance} Days</span> remaining ({stats.leavePercentage}%)</p>
-                <p className="text-xs text-muted-foreground mt-0.5">-1 day deducted every month</p>
+          {/* Leave Quick Actions */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Card className="p-4 shadow-card bg-warning/5 border-warning/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold flex items-center gap-2"><CalendarX2 className="w-5 h-5 text-warning" /> Casual Leave</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Current Balance: <span className="font-bold text-foreground">{stats.casualLeaveBalance} Days</span> remaining</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">-1 day deducted every month</p>
+                </div>
+                <Button asChild variant="outline" className="border-warning text-warning hover:bg-warning/10">
+                  <Link to="/leaves">Apply</Link>
+                </Button>
               </div>
-              <Button asChild variant="outline" className="border-warning text-warning hover:bg-warning/10">
-                <Link to="/leaves">Apply for Leave</Link>
-              </Button>
-            </div>
-          </Card>
+            </Card>
+
+            <Card className="p-4 shadow-card bg-destructive/5 border-destructive/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold flex items-center gap-2"><Activity className="w-5 h-5 text-destructive" /> Sick Leave</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Current Balance: <span className="font-bold text-foreground">{stats.sickLeaveBalance} Days</span> remaining</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">-1 day deducted every month</p>
+                </div>
+                <Button asChild variant="outline" className="border-destructive text-destructive hover:bg-destructive/10">
+                  <Link to="/leaves">Apply</Link>
+                </Button>
+              </div>
+            </Card>
+          </div>
 
           {/* Sections */}
           <div className="grid gap-4 lg:grid-cols-3">

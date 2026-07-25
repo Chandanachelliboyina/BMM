@@ -1,0 +1,237 @@
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { AppShell } from "@/components/AppShell";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Search, Loader2, Database, Pencil } from "lucide-react";
+import { apiGetEmployees, apiToggleAccess, apiUpdateLeaves, Employee, apiMe } from "@/lib/api";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
+import { useEmployee } from "@/hooks/useEmployee";
+
+export const Route = createFileRoute("/_authenticated/database")({
+  head: () => ({ meta: [{ title: "Database — BMM" }] }),
+  beforeLoad: async () => {
+    const me = await apiMe();
+    if (me?.role?.toUpperCase() !== "ADMIN") {
+      throw redirect({ to: "/dashboard" });
+    }
+  },
+  component: DatabasePage,
+});
+
+function DatabasePage() {
+  const { employee, loading } = useEmployee();
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [filtered, setFiltered] = useState<Employee[]>([]);
+  const [search, setSearch] = useState("");
+  const [fetching, setFetching] = useState(true);
+
+  // Dialog State
+  const [editingLeaves, setEditingLeaves] = useState<Employee | null>(null);
+  const [casualLeavesInput, setCasualLeavesInput] = useState("");
+  const [sickLeavesInput, setSickLeavesInput] = useState("");
+
+  const loadEmployees = async () => {
+    setFetching(true);
+    try {
+      const data = await apiGetEmployees();
+      setEmployees(data);
+      setFiltered(data);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load employees");
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  useEffect(() => {
+    if (employee?.role?.toUpperCase() === "ADMIN") {
+      loadEmployees();
+    }
+  }, [employee]);
+
+  useEffect(() => {
+    if (!search) {
+      setFiltered(employees);
+      return;
+    }
+    const lower = search.toLowerCase();
+    setFiltered(
+      employees.filter(
+        (e) =>
+          e.full_name.toLowerCase().includes(lower) ||
+          e.employee_id.toLowerCase().includes(lower) ||
+          e.role.toLowerCase().includes(lower) ||
+          (e.department && e.department.toLowerCase().includes(lower))
+      )
+    );
+  }, [search, employees]);
+
+  const handleToggleAccess = async (empId: string, currentAccess: boolean) => {
+    try {
+      const newAccess = !currentAccess;
+      // Optimistic update
+      setEmployees(prev => prev.map(e => e.employee_id === empId ? { ...e, has_access: newAccess } : e));
+      await apiToggleAccess(empId, newAccess);
+      toast.success(`Dashboard access ${newAccess ? 'granted' : 'revoked'} for ${empId}`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update access");
+      // Revert on failure
+      loadEmployees();
+    }
+  };
+
+  const handleSaveLeaves = async () => {
+    if (!editingLeaves) return;
+    try {
+      const casual = parseInt(casualLeavesInput, 10);
+      const sick = parseInt(sickLeavesInput, 10);
+      if (isNaN(casual) || isNaN(sick)) {
+        toast.error("Please enter valid numbers");
+        return;
+      }
+      
+      // Optimistic update
+      setEmployees(prev => prev.map(e => e.employee_id === editingLeaves.employee_id ? { ...e, casual_leaves: casual, sick_leaves: sick } : e));
+      await apiUpdateLeaves(editingLeaves.employee_id, casual, sick);
+      toast.success(`Leaves updated for ${editingLeaves.employee_id}`);
+      setEditingLeaves(null);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update leaves");
+      loadEmployees();
+    }
+  };
+
+  if (loading || fetching) {
+    return (
+      <AppShell title="Database">
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </AppShell>
+    );
+  }
+
+  return (
+    <AppShell title="Database">
+      <Card className="p-6 shadow-card">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <div>
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Database className="w-5 h-5 text-primary" />
+              Employee Database
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Manage all employees and their access to the dashboard.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 mb-6">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name, ID, role or department..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        </div>
+
+        <div className="rounded-md border overflow-hidden">
+          <Table>
+            <TableHeader className="bg-muted/50">
+              <TableRow>
+                <TableHead>Employee ID</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Department</TableHead>
+                <TableHead>Mobile</TableHead>
+                <TableHead className="text-center">Casual Leaves</TableHead>
+                <TableHead className="text-center">Sick Leaves</TableHead>
+                <TableHead className="text-center">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    No employees found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filtered.map((emp) => (
+                  <TableRow key={emp.employee_id}>
+                    <TableCell className="font-mono font-medium">{emp.employee_id}</TableCell>
+                    <TableCell className="font-medium">{emp.full_name}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{emp.role}</Badge>
+                    </TableCell>
+                    <TableCell>{emp.department || "—"}</TableCell>
+                    <TableCell>{emp.mobile_number}</TableCell>
+                    <TableCell className="text-center font-semibold">{emp.casual_leaves ?? "—"}</TableCell>
+                    <TableCell className="text-center font-semibold">{emp.sick_leaves ?? "—"}</TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex items-center justify-center gap-4">
+                        <Switch
+                          checked={emp.has_access !== false}
+                          onCheckedChange={() => handleToggleAccess(emp.employee_id, emp.has_access !== false)}
+                          title="Toggle Dashboard Access"
+                        />
+                        <Button variant="ghost" size="icon" onClick={() => {
+                          setEditingLeaves(emp);
+                          setCasualLeavesInput(emp.casual_leaves?.toString() || "0");
+                          setSickLeavesInput(emp.sick_leaves?.toString() || "0");
+                        }} title="Edit Leaves">
+                          <Pencil className="w-4 h-4 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
+
+      <Dialog open={!!editingLeaves} onOpenChange={(open) => !open && setEditingLeaves(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Leaves</DialogTitle>
+            <DialogDescription>Update the leave balances for {editingLeaves?.full_name} ({editingLeaves?.employee_id}).</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label>Casual Leaves</Label>
+              <Input
+                type="number"
+                value={casualLeavesInput}
+                onChange={(e) => setCasualLeavesInput(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Sick Leaves</Label>
+              <Input
+                type="number"
+                value={sickLeavesInput}
+                onChange={(e) => setSickLeavesInput(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingLeaves(null)}>Cancel</Button>
+            <Button onClick={handleSaveLeaves}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </AppShell>
+  );
+}

@@ -249,8 +249,10 @@ function RegisterPage() {
               <Button type="submit" disabled={loading} className="flex-1 h-11 bg-gradient-primary shadow-elegant">
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Account"}
               </Button>
-              <Link to="/auth/login" className="flex-1">
-                <Button type="button" variant="outline" className="w-full h-11">Already registered? Sign in</Button>
+              <Link to="/auth/login" className="flex-1 block">
+                <Button asChild variant="outline" className="w-full h-11">
+                  <span>Already registered? Sign in</span>
+                </Button>
               </Link>
             </div>
           </form>

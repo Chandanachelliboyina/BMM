@@ -1,10 +1,11 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Building2, LayoutDashboard, User, CalendarCheck, ClipboardList, Activity, CalendarDays, BarChart3, Bell, Settings, LogOut, Home } from "lucide-react";
+import { Building2, LayoutDashboard, User, CalendarCheck, ClipboardList, Activity, CalendarDays, BarChart3, Bell, Settings, LogOut, Home, Database } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useEmployee } from "@/hooks/useEmployee";
 
 const items = [
   { title: "Home", url: "/home", icon: Home },
@@ -24,7 +25,7 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const navigate = useNavigate();
-  
+  const { employee } = useEmployee();
 
   const signOut = async () => {
     // Route to the logout selfie flow; that page handles actual sign-out.
@@ -64,6 +65,16 @@ export function AppSidebar() {
                   </SidebarMenuItem>
                 );
               })}
+              {employee?.role?.toUpperCase() === "ADMIN" && (
+                <SidebarMenuItem key="Database">
+                  <SidebarMenuButton asChild isActive={pathname === "/database" || pathname.startsWith("/database/")} tooltip="Database">
+                    <Link to="/database" className="flex items-center gap-2">
+                      <Database className="h-4 w-4 shrink-0" />
+                      {!collapsed && <span>Database</span>}
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

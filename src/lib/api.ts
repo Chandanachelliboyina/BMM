@@ -49,7 +49,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     if (typeof window !== "undefined") {
       window.location.href = "/auth/login";
     }
-    throw new Error(res.status === 403 ? "Your access has been revoked by the administrator." : "Session expired. Please sign in again.");
+    throw new Error(res.status === 403 ? "admin not give grant access to view your dashboard" : "Session expired. Please sign in again.");
   }
 
   if (!res.ok) {
@@ -133,6 +133,9 @@ export interface Employee {
   profile_photo_b64?: string | null;
   joining_date?: string | null;
   allow_late_signin?: boolean;
+  has_access?: boolean;
+  casual_leaves?: number;
+  sick_leaves?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -256,6 +259,20 @@ export async function apiToggleLateSignin(employeeId: string, allow: boolean): P
   return request<{ message: string; allow_late_signin: boolean }>(`/api/employees/${employeeId}/allow-late-signin`, {
     method: "PUT",
     body: JSON.stringify({ allow_late_signin: allow }),
+  });
+}
+
+export async function apiToggleAccess(employeeId: string, hasAccess: boolean): Promise<{ message: string; has_access: boolean }> {
+  return request<{ message: string; has_access: boolean }>(`/api/employees/${employeeId}/access`, {
+    method: "PUT",
+    body: JSON.stringify({ has_access: hasAccess }),
+  });
+}
+
+export async function apiUpdateLeaves(employeeId: string, casualLeaves: number, sickLeaves: number): Promise<{ message: string }> {
+  return request<{ message: string }>(`/api/employees/${employeeId}/leaves`, {
+    method: "PUT",
+    body: JSON.stringify({ casual_leaves: casualLeaves, sick_leaves: sickLeaves }),
   });
 }
 

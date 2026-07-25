@@ -134,8 +134,10 @@ function LeavesPage() {
 
   if (leaves) {
     leaves.forEach((l: any) => {
-      if (l.leave_type === "Casual") takenCasual++;
-      if (l.leave_type === "Sick") takenSick++;
+      if (l.status === "Approved") {
+        if (l.leave_type === "Casual") takenCasual++;
+        if (l.leave_type === "Sick") takenSick++;
+      }
     });
   }
 

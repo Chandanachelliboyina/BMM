@@ -679,8 +679,14 @@ async def get_leaves(current: dict = Depends(get_current_employee)):
     query = {}
     if current.get("role", "").upper() != "ADMIN":
         query["employee_id"] = current["employee_id"]
-        thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-        query["created_at"] = {"$gte": thirty_days_ago}
+        # Financial year: April 1st to March 31st
+        now = datetime.now(timezone.utc)
+        if now.month >= 4:
+            fin_year_start = datetime(now.year, 4, 1, tzinfo=timezone.utc)
+        else:
+            fin_year_start = datetime(now.year - 1, 4, 1, tzinfo=timezone.utc)
+        
+        query["leave_date"] = {"$gte": fin_year_start.isoformat()[:10]}
         
     records = []
     async for r in db.leaves.find(query, sort=[("leave_date", -1)]):

@@ -677,16 +677,18 @@ async def update_leave_status(leave_id: str, req: LeaveStatusUpdate, current: di
 @app.get("/api/leaves")
 async def get_leaves(current: dict = Depends(get_current_employee)):
     query = {}
+    
+    # Financial year: April 1st to March 31st
+    now = datetime.now(timezone.utc)
+    if now.month >= 4:
+        fin_year_start = datetime(now.year, 4, 1, tzinfo=timezone.utc)
+    else:
+        fin_year_start = datetime(now.year - 1, 4, 1, tzinfo=timezone.utc)
+    
+    query["leave_date"] = {"$gte": fin_year_start.isoformat()[:10]}
+    
     if current.get("role", "").upper() != "ADMIN":
         query["employee_id"] = current["employee_id"]
-        # Financial year: April 1st to March 31st
-        now = datetime.now(timezone.utc)
-        if now.month >= 4:
-            fin_year_start = datetime(now.year, 4, 1, tzinfo=timezone.utc)
-        else:
-            fin_year_start = datetime(now.year - 1, 4, 1, tzinfo=timezone.utc)
-        
-        query["leave_date"] = {"$gte": fin_year_start.isoformat()[:10]}
         
     records = []
     async for r in db.leaves.find(query, sort=[("leave_date", -1)]):

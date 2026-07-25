@@ -134,7 +134,7 @@ function LeavesPage() {
 
   if (leaves) {
     leaves.forEach((l: any) => {
-      if (l.status === "Approved") {
+      if (l.employee_id === employee?.employee_id && l.status === "Approved") {
         if (l.leave_type === "Casual") takenCasual++;
         if (l.leave_type === "Sick") takenSick++;
       }

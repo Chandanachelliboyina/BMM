@@ -643,8 +643,33 @@ async def update_leave_status(leave_id: str, req: LeaveStatusUpdate, current: di
     old_status = leave.get("status", "Pending")
     new_status = req.status
     
-    # We no longer deduct from the database directly. 
-    # The frontend will dynamically calculate Remaining = Total Allocated (from DB) - Taken (from History)
+    # If transitioning from Pending to Approved, deduct the leave balance
+    if old_status != "Approved" and new_status == "Approved":
+        leave_type_upper = leave["leave_type"].upper()
+        if "CASUAL" in leave_type_upper:
+            await db.employees.update_one(
+                {"employee_id": leave["employee_id"]},
+                {"$inc": {"casual_leaves": -1}}
+            )
+        elif "SICK" in leave_type_upper:
+            await db.employees.update_one(
+                {"employee_id": leave["employee_id"]},
+                {"$inc": {"sick_leaves": -1}}
+            )
+            
+    # Optional: If transitioning from Approved to Rejected/Pending, refund the leave
+    if old_status == "Approved" and new_status != "Approved":
+        leave_type_upper = leave["leave_type"].upper()
+        if "CASUAL" in leave_type_upper:
+            await db.employees.update_one(
+                {"employee_id": leave["employee_id"]},
+                {"$inc": {"casual_leaves": 1}}
+            )
+        elif "SICK" in leave_type_upper:
+            await db.employees.update_one(
+                {"employee_id": leave["employee_id"]},
+                {"$inc": {"sick_leaves": 1}}
+            )
 
     await db.leaves.update_one({"_id": ObjectId(leave_id)}, {"$set": {"status": new_status}})
     return {"message": f"Leave status updated to {new_status}"}

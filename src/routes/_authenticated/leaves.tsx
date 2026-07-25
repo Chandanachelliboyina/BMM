@@ -141,10 +141,10 @@ function LeavesPage() {
     });
   }
 
-  const totalCasual = employee?.casual_leaves ?? 0;
-  const totalSick = employee?.sick_leaves ?? 0;
-  const remainingCasual = Math.max(0, totalCasual - takenCasual);
-  const remainingSick = Math.max(0, totalSick - takenSick);
+  const remainingCasual = employee?.casual_leaves ?? 0;
+  const remainingSick = employee?.sick_leaves ?? 0;
+  const totalCasual = remainingCasual + takenCasual;
+  const totalSick = remainingSick + takenSick;
 
   return (
     <AppShell title="Leave Management">

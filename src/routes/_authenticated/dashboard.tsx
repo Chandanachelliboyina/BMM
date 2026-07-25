@@ -44,20 +44,6 @@ function DashboardPage() {
       const todayRow = data?.find((r) => r.login_date === today);
       const joined = employee.joining_date ? new Date(employee.joining_date) : new Date(employee.created_at || Date.now());
       const daysSince = Math.max(1, Math.ceil((Date.now() - joined.getTime()) / (1000 * 60 * 60 * 24)));
-      const leavesData = await fetch(`${BASE_URL}/api/leaves`, {
-        headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) }
-      }).then(r => r.json()).catch(() => []);
-      
-      let takenCasual = 0;
-      let takenSick = 0;
-      if (Array.isArray(leavesData)) {
-        leavesData.forEach((l: any) => {
-          if (l.employee_id === employee?.employee_id && l.status === "Approved") {
-            if (l.leave_type === "Casual") takenCasual++;
-            if (l.leave_type === "Sick") takenSick++;
-          }
-        });
-      }
 
       setStats({
         totalOrgEmployees: totalEmp || 0,
@@ -66,8 +52,8 @@ function DashboardPage() {
         todayTime: todayRow ? format(new Date(todayRow.login_time), "hh:mm a") : null,
         todayLogout: todayRow?.logout_time ? format(new Date(todayRow.logout_time), "hh:mm a") : null,
         status: todayRow ? (todayRow.logout_time ? "Checked Out" : "Checked In (Absent if no checkout)") : "Absent",
-        casualLeaveBalance: Math.max(0, (employee.casual_leaves ?? 0) - takenCasual),
-        sickLeaveBalance: Math.max(0, (employee.sick_leaves ?? 0) - takenSick)
+        casualLeaveBalance: employee.casual_leaves ?? 0,
+        sickLeaveBalance: employee.sick_leaves ?? 0
       });
 
       if (data && data.length > 0) {

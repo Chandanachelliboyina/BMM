@@ -136,6 +136,10 @@ export interface Employee {
   has_access?: boolean;
   casual_leaves?: number;
   sick_leaves?: number;
+  casual_earned?: number;
+  sick_earned?: number;
+  casual_used?: number;
+  sick_used?: number;
   created_at?: string;
   updated_at?: string;
 }

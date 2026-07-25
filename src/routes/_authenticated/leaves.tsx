@@ -6,21 +6,61 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiMe, getToken, apiAttendanceHistory, BASE_URL } from "@/lib/api";
+import { apiMe, getToken, BASE_URL } from "@/lib/api";
 import { useEmployee } from "@/hooks/useEmployee";
 import { toast } from "sonner";
-import { CalendarDays, Plus, Loader2, Info } from "lucide-react";
+import { CalendarDays, Plus, Loader2, CheckCircle2, XCircle, Clock, TrendingUp, Minus, ChevronLeft, ChevronRight } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/leaves")({
   component: LeavesPage,
 });
 
+interface BalanceSummary {
+  financial_year: string;
+  fy_label: string;
+  fy_start_year: number;
+  is_current_fy: boolean;
+  months_earned: number;
+  total_casual_earned: number;
+  total_sick_earned: number;
+  total_casual_used: number;
+  total_sick_used: number;
+  remaining_casual: number;
+  remaining_sick: number;
+}
+
+/** Get the current FY start year */
+function getCurrentFYStart(): number {
+  const now = new Date();
+  return now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
+/** Generate a list of FY options: from 2025 up to current FY */
+function getFYOptions(): { value: number; label: string }[] {
+  const currentFY = getCurrentFYStart();
+  const options: { value: number; label: string }[] = [];
+  // Show from 2025 (FY 2025-26) through current + 0
+  const startYear = 2025;
+  for (let y = startYear; y <= currentFY; y++) {
+    options.push({
+      value: y,
+      label: `FY ${y}-${String(y + 1).slice(-2)}`,
+    });
+  }
+  return options;
+}
+
 function LeavesPage() {
   const queryClient = useQueryClient();
   const { employee, refresh: refreshEmployee } = useEmployee();
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Year selector — default to current FY
+  const [selectedYear, setSelectedYear] = useState<number>(getCurrentFYStart);
+  const fyOptions = useMemo(() => getFYOptions(), []);
+  const isCurrentFY = selectedYear === getCurrentFYStart();
   
   // Form State
   const [leaveDate, setLeaveDate] = useState("");
@@ -28,30 +68,32 @@ function LeavesPage() {
   const [reason, setReason] = useState("");
   const [reportImage, setReportImage] = useState<File | null>(null);
 
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth();
-  const startYear = currentMonth >= 3 ? currentYear : currentYear - 1;
-  const endYear = startYear + 1;
+  // Fetch leave balance summary (month-wise) for selected year
+  const { data: balanceSummary } = useQuery<BalanceSummary>({
+    queryKey: ["leaveBalanceSummary", selectedYear],
+    queryFn: async () => {
+      const token = getToken();
+      const res = await fetch(`${BASE_URL}/api/leaves/balance-summary?year=${selectedYear}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Failed to load balance");
+      return res.json();
+    },
+  });
 
+  // Fetch leaves for selected year
   const { data: leaves, isLoading } = useQuery({
-    queryKey: ["leaves"],
+    queryKey: ["leaves", selectedYear],
     queryFn: async () => {
       const emp = await apiMe();
       if (!emp) throw new Error("Not authenticated");
-      const BASE = BASE_URL;
       const token = getToken();
-      const res = await fetch(`${BASE}/api/leaves`, {
+      const res = await fetch(`${BASE_URL}/api/leaves?year=${selectedYear}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) return [];
       return res.json();
     },
-  });
-
-  const { data: attendance } = useQuery({
-    queryKey: ["attendanceHistory"],
-    queryFn: apiAttendanceHistory
   });
 
   const submitMutation = useMutation({
@@ -71,9 +113,8 @@ function LeavesPage() {
         });
       }
 
-      const BASE = BASE_URL;
       const token = getToken();
-      const res = await fetch(`${BASE}/api/leaves`, {
+      const res = await fetch(`${BASE_URL}/api/leaves`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ leave_date: leaveDate, leave_type: leaveType, reason: reason, status: "Pending", image_b64 }),
@@ -81,8 +122,9 @@ function LeavesPage() {
       if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.detail || "Failed"); }
     },
     onSuccess: () => {
-      toast.success("Leave recorded successfully!");
+      toast.success("Leave request submitted successfully!");
       queryClient.invalidateQueries({ queryKey: ["leaves"] });
+      queryClient.invalidateQueries({ queryKey: ["leaveBalanceSummary"] });
       setLeaveDate("");
       setLeaveType("");
       setReason("");
@@ -97,9 +139,8 @@ function LeavesPage() {
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const BASE = BASE_URL;
       const token = getToken();
-      const res = await fetch(`${BASE}/api/leaves/${id}/status`, {
+      const res = await fetch(`${BASE_URL}/api/leaves/${id}/status`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ status }),
@@ -112,6 +153,7 @@ function LeavesPage() {
     onSuccess: () => {
       toast.success("Leave status updated!");
       queryClient.invalidateQueries({ queryKey: ["leaves"] });
+      queryClient.invalidateQueries({ queryKey: ["leaveBalanceSummary"] });
       refreshEmployee();
     },
     onError: (error) => {
@@ -129,169 +171,249 @@ function LeavesPage() {
     submitMutation.mutate();
   };
 
-  let takenCasual = 0;
-  let takenSick = 0;
+  const earnedCL = balanceSummary?.total_casual_earned ?? 0;
+  const earnedSL = balanceSummary?.total_sick_earned ?? 0;
+  const usedCL = balanceSummary?.total_casual_used ?? 0;
+  const usedSL = balanceSummary?.total_sick_used ?? 0;
+  const remainingCL = balanceSummary?.remaining_casual ?? 0;
+  const remainingSL = balanceSummary?.remaining_sick ?? 0;
+  const fyLabel = balanceSummary?.fy_label ?? "";
+  const fyTitle = balanceSummary?.financial_year ?? "";
 
-  if (leaves) {
-    leaves.forEach((l: any) => {
-      if (l.employee_id === employee?.employee_id && l.status === "Approved") {
-        if (l.leave_type === "Casual") takenCasual++;
-        if (l.leave_type === "Sick") takenSick++;
-      }
-    });
-  }
-
-  const remainingCasual = employee?.casual_leaves ?? 0;
-  const remainingSick = employee?.sick_leaves ?? 0;
-  const totalCasual = remainingCasual + takenCasual;
-  const totalSick = remainingSick + takenSick;
+  const canGoPrev = selectedYear > 2025;
+  const canGoNext = selectedYear < getCurrentFYStart();
 
   return (
     <AppShell title="Leave Management">
-      <div className="p-4 md:p-8 pt-6 max-w-5xl mx-auto space-y-8">
-        <div className="flex items-center justify-between">
+      <div className="p-4 md:p-8 pt-6 max-w-6xl mx-auto space-y-8">
+        {/* Header with Year Selector */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-3xl font-bold tracking-tight">Leave Management</h2>
             <p className="text-muted-foreground mt-1">
-              Track your leave balances and submit leave requests.
+              Track leave balances and submit requests year-wise.
             </p>
+          </div>
+
+          {/* Year Selector */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9"
+              onClick={() => setSelectedYear((y) => y - 1)}
+              disabled={!canGoPrev}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Select
+              value={String(selectedYear)}
+              onValueChange={(val) => setSelectedYear(Number(val))}
+            >
+              <SelectTrigger className="w-[150px] h-9 font-semibold">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {fyOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={String(opt.value)}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9"
+              onClick={() => setSelectedYear((y) => y + 1)}
+              disabled={!canGoNext}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
         </div>
 
-        {/* Balance Dashboard */}
+        {/* FY Sub-label */}
+        {fyLabel && (
+          <div className="flex items-center gap-2 -mt-4">
+            <span className="text-sm font-medium text-primary">{fyTitle}</span>
+            <span className="text-sm text-muted-foreground">({fyLabel})</span>
+            {isCurrentFY && (
+              <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full">CURRENT YEAR</span>
+            )}
+          </div>
+        )}
+
+        {/* Balance Dashboard — Earned / Used / Remaining */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900">
+          {/* Casual Leave Card */}
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border-blue-200 dark:border-blue-800 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-blue-800 dark:text-blue-300">Casual Leaves</CardTitle>
+              <CardTitle className="text-blue-800 dark:text-blue-300 flex items-center gap-2">
+                <CalendarDays className="h-5 w-5" />
+                Casual Leave (CL)
+              </CardTitle>
+              <CardDescription className="text-blue-600/70 dark:text-blue-400/70">1 CL earned per month</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-4 text-center mt-2">
-                <div>
-                  <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">{totalCasual}</div>
-                  <div className="text-xs text-blue-700 dark:text-blue-400">Total</div>
+                <div className="p-3 rounded-lg bg-blue-100/60 dark:bg-blue-900/30">
+                  <div className="flex items-center justify-center gap-1">
+                    <TrendingUp className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">{earnedCL}</div>
+                  <div className="text-xs font-medium text-blue-700 dark:text-blue-400">Earned</div>
                 </div>
-                <div>
-                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">{takenCasual}</div>
-                  <div className="text-xs text-blue-700 dark:text-blue-400">Taken</div>
+                <div className="p-3 rounded-lg bg-red-100/60 dark:bg-red-900/20">
+                  <div className="flex items-center justify-center gap-1">
+                    <Minus className="h-4 w-4 text-red-600 dark:text-red-400" />
+                  </div>
+                  <div className="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">{usedCL}</div>
+                  <div className="text-xs font-medium text-red-600/80 dark:text-red-400/80">Used</div>
                 </div>
-                <div>
-                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">{remainingCasual}</div>
-                  <div className="text-xs text-blue-700 dark:text-blue-400">Remaining</div>
+                <div className="p-3 rounded-lg bg-green-100/60 dark:bg-green-900/20">
+                  <div className="flex items-center justify-center gap-1">
+                    <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">{remainingCL}</div>
+                  <div className="text-xs font-medium text-green-600/80 dark:text-green-400/80">Remaining</div>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900">
+          {/* Sick Leave Card */}
+          <Card className="bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-950/30 dark:to-purple-900/20 border-purple-200 dark:border-purple-800 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-purple-800 dark:text-purple-300">Sick Leaves</CardTitle>
+              <CardTitle className="text-purple-800 dark:text-purple-300 flex items-center gap-2">
+                <CalendarDays className="h-5 w-5" />
+                Sick Leave (SL)
+              </CardTitle>
+              <CardDescription className="text-purple-600/70 dark:text-purple-400/70">1 SL earned per month</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-4 text-center mt-2">
-                <div>
-                  <div className="text-2xl font-bold text-purple-900 dark:text-purple-100">{totalSick}</div>
-                  <div className="text-xs text-purple-700 dark:text-purple-400">Total</div>
+                <div className="p-3 rounded-lg bg-purple-100/60 dark:bg-purple-900/30">
+                  <div className="flex items-center justify-center gap-1">
+                    <TrendingUp className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                  </div>
+                  <div className="text-2xl font-bold text-purple-900 dark:text-purple-100 mt-1">{earnedSL}</div>
+                  <div className="text-xs font-medium text-purple-700 dark:text-purple-400">Earned</div>
                 </div>
-                <div>
-                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">{takenSick}</div>
-                  <div className="text-xs text-purple-700 dark:text-purple-400">Taken</div>
+                <div className="p-3 rounded-lg bg-red-100/60 dark:bg-red-900/20">
+                  <div className="flex items-center justify-center gap-1">
+                    <Minus className="h-4 w-4 text-red-600 dark:text-red-400" />
+                  </div>
+                  <div className="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">{usedSL}</div>
+                  <div className="text-xs font-medium text-red-600/80 dark:text-red-400/80">Used</div>
                 </div>
-                <div>
-                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">{remainingSick}</div>
-                  <div className="text-xs text-purple-700 dark:text-purple-400">Remaining</div>
+                <div className="p-3 rounded-lg bg-green-100/60 dark:bg-green-900/20">
+                  <div className="flex items-center justify-center gap-1">
+                    <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">{remainingSL}</div>
+                  <div className="text-xs font-medium text-green-600/80 dark:text-green-400/80">Remaining</div>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Form Section */}
-          <Card className="md:col-span-1 h-fit">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Plus className="h-5 w-5" />
-                Apply for Leave
-              </CardTitle>
-              <CardDescription>Record a new leave day.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Date</Label>
-                  <Input 
-                    type="date" 
-                    value={leaveDate} 
-                    onChange={(e) => setLeaveDate(e.target.value)} 
-                    required 
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label>Leave Type</Label>
-                  <Select value={leaveType} onValueChange={setLeaveType} required>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Casual">Casual</SelectItem>
-                      <SelectItem value="Sick">Sick</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {leaveType === "Sick" && (
+          {/* Form Section — only show for current FY */}
+          {isCurrentFY && (
+            <Card className="md:col-span-1 h-fit">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Plus className="h-5 w-5" />
+                  Apply for Leave
+                </CardTitle>
+                <CardDescription>Submit a new leave request.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Medical Report (Image)</Label>
-                    {!reportImage ? (
-                      <Input 
-                        type="file" 
-                        accept="image/*"
-                        onChange={(e) => setReportImage(e.target.files?.[0] || null)}
-                      />
-                    ) : (
-                      <div className="flex items-center justify-between p-2 border rounded-md">
-                        <span className="text-sm truncate max-w-[200px]">{reportImage.name}</span>
-                        <Button 
-                          type="button" 
-                          variant="destructive" 
-                          size="sm"
-                          onClick={() => setReportImage(null)}
-                        >
-                          Remove Report
-                        </Button>
-                      </div>
-                    )}
+                    <Label>Date</Label>
+                    <Input 
+                      type="date" 
+                      value={leaveDate} 
+                      onChange={(e) => setLeaveDate(e.target.value)} 
+                      required 
+                    />
                   </div>
-                )}
+                  
+                  <div className="space-y-2">
+                    <Label>Leave Type</Label>
+                    <Select value={leaveType} onValueChange={setLeaveType} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Casual">Casual Leave (CL)</SelectItem>
+                        <SelectItem value="Sick">Sick Leave (SL)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <div className="space-y-2">
-                  <Label>Reason</Label>
-                  <Textarea 
-                    placeholder="Briefly explain the reason..." 
-                    value={reason} 
-                    onChange={(e) => setReason(e.target.value)} 
-                    rows={3}
-                  />
-                </div>
-
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
-                  {isSubmitting ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <CalendarDays className="h-4 w-4 mr-2" />
+                  {leaveType === "Sick" && (
+                    <div className="space-y-2">
+                      <Label>Medical Report (Image)</Label>
+                      {!reportImage ? (
+                        <Input 
+                          type="file" 
+                          accept="image/*"
+                          onChange={(e) => setReportImage(e.target.files?.[0] || null)}
+                        />
+                      ) : (
+                        <div className="flex items-center justify-between p-2 border rounded-md">
+                          <span className="text-sm truncate max-w-[200px]">{reportImage.name}</span>
+                          <Button 
+                            type="button" 
+                            variant="destructive" 
+                            size="sm"
+                            onClick={() => setReportImage(null)}
+                          >
+                            Remove Report
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   )}
-                  Submit Leave
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+
+                  <div className="space-y-2">
+                    <Label>Reason</Label>
+                    <Textarea 
+                      placeholder="Briefly explain the reason..." 
+                      value={reason} 
+                      onChange={(e) => setReason(e.target.value)} 
+                      rows={3}
+                    />
+                  </div>
+
+                  <Button type="submit" className="w-full" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <CalendarDays className="h-4 w-4 mr-2" />
+                    )}
+                    Submit Leave
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          )}
 
           {/* History Section */}
-          <Card className="md:col-span-2">
+          <Card className={isCurrentFY ? "md:col-span-2" : "md:col-span-3"}>
             <CardHeader>
-              <CardTitle>Leave History ({new Date().getFullYear()})</CardTitle>
-              <CardDescription>Your taken leaves for the current year.</CardDescription>
+              <CardTitle>Leave History — {fyTitle}</CardTitle>
+              <CardDescription>
+                {isCurrentFY 
+                  ? "Your leave requests for the current financial year." 
+                  : `Viewing historical leave data for ${fyTitle}.`
+                }
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -299,15 +421,17 @@ function LeavesPage() {
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : leaves && leaves.length > 0 ? (
-                <div className="space-y-4">
-                  {leaves.map((leave) => (
-                    <div key={leave.id} className="p-4 rounded-lg border bg-card text-card-foreground shadow-sm flex items-center justify-between">
-                      <div>
-                        <div className="font-semibold flex items-center gap-2">
-                          {new Date(leave.leave_date).toLocaleDateString()}
+                <div className="space-y-3">
+                  {leaves.map((leave: any) => (
+                    <div key={leave.id} className="p-4 rounded-lg border bg-card text-card-foreground shadow-sm flex items-center justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold flex items-center gap-2 flex-wrap">
+                          {new Date(leave.leave_date).toLocaleDateString("en-IN", { 
+                            weekday: "short", day: "numeric", month: "short", year: "numeric" 
+                          })}
                           {employee?.role?.toUpperCase() === "ADMIN" && employee.employee_id !== leave.employee_id && (
                             <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
-                              {leave.employee_id}
+                              {leave.employee_name || leave.employee_id}
                             </span>
                           )}
                         </div>
@@ -320,22 +444,25 @@ function LeavesPage() {
                           </div>
                         )}
                       </div>
-                      <div className="flex flex-col items-end gap-2">
-                        <div className={`text-sm px-2 py-1 rounded-md font-medium ${
+                      <div className="flex flex-col items-end gap-2 shrink-0">
+                        <div className={`text-sm px-2.5 py-1 rounded-md font-medium ${
                           leave.leave_type === "Casual" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" : "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300"
                         }`}>
-                          {leave.leave_type}
+                          {leave.leave_type === "Casual" ? "CL" : "SL"}
                         </div>
-                        <div className={`text-xs px-2 py-0.5 rounded-full border ${
+                        <div className={`text-xs px-2 py-1 rounded-full border flex items-center gap-1 ${
                           leave.status === "Rejected" 
                             ? "text-red-600 bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900"
                             : leave.status === "Pending"
                             ? "text-yellow-600 bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-900"
                             : "text-green-600 bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-900"
                         }`}>
+                          {leave.status === "Approved" && <CheckCircle2 className="h-3 w-3" />}
+                          {leave.status === "Rejected" && <XCircle className="h-3 w-3" />}
+                          {leave.status === "Pending" && <Clock className="h-3 w-3" />}
                           {leave.status}
                         </div>
-                        {employee?.role?.toUpperCase() === "ADMIN" && leave.status === "Pending" && (
+                        {employee?.role?.toUpperCase() === "ADMIN" && leave.status === "Pending" && isCurrentFY && (
                           <div className="flex gap-2 mt-2">
                             <Button 
                               size="sm" 
@@ -363,7 +490,7 @@ function LeavesPage() {
                 </div>
               ) : (
                 <div className="text-center p-8 text-muted-foreground border-2 border-dashed rounded-lg">
-                  No leaves taken this year.
+                  No leaves applied for {fyTitle}.
                 </div>
               )}
             </CardContent>

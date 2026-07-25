@@ -132,20 +132,66 @@ def get_current_fin_year():
         return str(now.year)
     return str(now.year - 1)
 
-def inject_leave_balances(emp: dict):
+def get_fin_year_months_earned():
+    """Return how many months have elapsed (inclusive) from April 1 of current FY to now.
+    Each elapsed month earns 1 CL + 1 SL.
+    April=1, May=2, ... March=12."""
+    now = datetime.now(timezone.utc)
+    if now.month >= 4:
+        return now.month - 3  # April=1, May=2, ..., Dec=9
+    else:
+        return now.month + 9  # Jan=10, Feb=11, Mar=12
+
+def get_fin_year_start():
+    """Return the April 1 date string of the current financial year."""
+    now = datetime.now(timezone.utc)
+    if now.month >= 4:
+        return f"{now.year}-04-01"
+    else:
+        return f"{now.year - 1}-04-01"
+
+async def compute_leave_usage(employee_id: str):
+    """Count approved leaves for the current FY from the leaves collection."""
+    fin_start = get_fin_year_start()
+    casual_used = 0
+    sick_used = 0
+    async for leave in db.leaves.find({
+        "employee_id": employee_id,
+        "status": "Approved",
+        "leave_date": {"$gte": fin_start}
+    }):
+        lt = leave.get("leave_type", "").upper()
+        if "CASUAL" in lt:
+            casual_used += 1
+        elif "SICK" in lt:
+            sick_used += 1
+    return casual_used, sick_used
+
+async def inject_leave_balances(emp: dict):
+    """Compute leave balances dynamically: earned (months elapsed) - used (approved leaves)."""
+    months_earned = get_fin_year_months_earned()
+    casual_used, sick_used = await compute_leave_usage(emp.get("employee_id", ""))
+    
+    # Check for admin overrides stored in leave_balances
     fin_year = get_current_fin_year()
-    balances = emp.get("leave_balances", {}).get(fin_year, {})
-    # Default to 0 if not set for the current year
-    emp["casual_leaves"] = balances.get("casual", 0)
-    emp["sick_leaves"] = balances.get("sick", 0)
+    overrides = emp.get("leave_balances", {}).get(fin_year, {})
+    extra_casual = overrides.get("extra_casual", 0)
+    extra_sick = overrides.get("extra_sick", 0)
+    
+    emp["casual_leaves"] = max(0, months_earned + extra_casual - casual_used)
+    emp["sick_leaves"] = max(0, months_earned + extra_sick - sick_used)
+    emp["casual_earned"] = months_earned + extra_casual
+    emp["sick_earned"] = months_earned + extra_sick
+    emp["casual_used"] = casual_used
+    emp["sick_used"] = sick_used
     return emp
 
-def clean_emp(emp: dict) -> dict:
+async def clean_emp(emp: dict) -> dict:
     emp = dict(emp)
     emp.pop("password_hash", None)
     if "_id" in emp:
         emp["id"] = str(emp.pop("_id"))
-    return inject_leave_balances(emp)
+    return await inject_leave_balances(emp)
 
 # ── Models ────────────────────────────────────────────────────────────────────
 class RegisterRequest(BaseModel):
@@ -336,7 +382,7 @@ async def update_profile(req: UpdateProfileRequest, current: dict = Depends(get_
         {"$set": updates}
     )
     updated = await db.employees.find_one({"employee_id": current["employee_id"]}, {"password_hash": 0})
-    return clean_emp(updated)
+    return await clean_emp(updated)
 
 @app.post("/api/employees/me/photo")
 async def update_photo(photo: UploadFile = File(...), current: dict = Depends(get_current_employee)):
@@ -673,62 +719,37 @@ async def update_leave_status(leave_id: str, req: LeaveStatusUpdate, current: di
     old_status = leave.get("status", "Pending")
     new_status = req.status
     
-    # If transitioning from Pending to Approved, deduct the leave balance
+    # If transitioning to Approved, validate balance
     if old_status != "Approved" and new_status == "Approved":
-        fin_year = get_current_fin_year()
-        emp = await db.employees.find_one({"employee_id": leave["employee_id"]})
-        if not emp:
-            raise HTTPException(status_code=404, detail="Employee not found")
-            
+        months_earned = get_fin_year_months_earned()
+        casual_used, sick_used = await compute_leave_usage(leave["employee_id"])
+        
         leave_type_upper = leave["leave_type"].upper()
         if "CASUAL" in leave_type_upper:
-            current_balance = emp.get("leave_balances", {}).get(fin_year, {}).get("casual", 0)
-            if current_balance < 1:
+            remaining = months_earned - casual_used
+            if remaining < 1:
                 raise HTTPException(status_code=400, detail="Insufficient casual leave balance for this financial year")
-            await db.employees.update_one(
-                {"employee_id": leave["employee_id"]},
-                {"$inc": {f"leave_balances.{fin_year}.casual": -1}}
-            )
             # Audit log
             await db.audit_logs.insert_one({
                 "action": "LEAVE_APPROVED",
                 "admin_id": current["employee_id"],
                 "target_employee_id": leave["employee_id"],
-                "details": f"Approved 1 Casual leave. Old balance: {current_balance}, New balance: {current_balance - 1}",
+                "details": f"Approved 1 Casual leave. Earned: {months_earned}, Used after: {casual_used + 1}, Remaining: {remaining - 1}",
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
             
         elif "SICK" in leave_type_upper:
-            current_balance = emp.get("leave_balances", {}).get(fin_year, {}).get("sick", 0)
-            if current_balance < 1:
+            remaining = months_earned - sick_used
+            if remaining < 1:
                 raise HTTPException(status_code=400, detail="Insufficient sick leave balance for this financial year")
-            await db.employees.update_one(
-                {"employee_id": leave["employee_id"]},
-                {"$inc": {f"leave_balances.{fin_year}.sick": -1}}
-            )
             # Audit log
             await db.audit_logs.insert_one({
                 "action": "LEAVE_APPROVED",
                 "admin_id": current["employee_id"],
                 "target_employee_id": leave["employee_id"],
-                "details": f"Approved 1 Sick leave. Old balance: {current_balance}, New balance: {current_balance - 1}",
+                "details": f"Approved 1 Sick leave. Earned: {months_earned}, Used after: {sick_used + 1}, Remaining: {remaining - 1}",
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
-            
-    # If transitioning from Approved to Rejected/Pending, refund the leave
-    if old_status == "Approved" and new_status != "Approved":
-        fin_year = get_current_fin_year()
-        leave_type_upper = leave["leave_type"].upper()
-        if "CASUAL" in leave_type_upper:
-            await db.employees.update_one(
-                {"employee_id": leave["employee_id"]},
-                {"$inc": {f"leave_balances.{fin_year}.casual": 1}}
-            )
-        elif "SICK" in leave_type_upper:
-            await db.employees.update_one(
-                {"employee_id": leave["employee_id"]},
-                {"$inc": {f"leave_balances.{fin_year}.sick": 1}}
-            )
             
     if new_status == "Rejected":
         await db.audit_logs.insert_one({
@@ -743,17 +764,22 @@ async def update_leave_status(leave_id: str, req: LeaveStatusUpdate, current: di
     return {"message": f"Leave status updated to {new_status}"}
 
 @app.get("/api/leaves")
-async def get_leaves(current: dict = Depends(get_current_employee)):
+async def get_leaves(year: Optional[int] = None, current: dict = Depends(get_current_employee)):
     query = {}
     
-    # Financial year: April 1st to March 31st
     now = datetime.now(timezone.utc)
-    if now.month >= 4:
-        fin_year_start = datetime(now.year, 4, 1, tzinfo=timezone.utc)
-    else:
-        fin_year_start = datetime(now.year - 1, 4, 1, tzinfo=timezone.utc)
     
-    query["leave_date"] = {"$gte": fin_year_start.isoformat()[:10]}
+    # Determine financial year from optional year param
+    if year is not None:
+        fy_start_year = year
+    else:
+        fy_start_year = now.year if now.month >= 4 else now.year - 1
+    fy_end_year = fy_start_year + 1
+    
+    fin_year_start = f"{fy_start_year}-04-01"
+    fin_year_end = f"{fy_end_year}-03-31"
+    
+    query["leave_date"] = {"$gte": fin_year_start, "$lte": fin_year_end}
     
     if current.get("role", "").upper() != "ADMIN":
         query["employee_id"] = current["employee_id"]
@@ -761,8 +787,124 @@ async def get_leaves(current: dict = Depends(get_current_employee)):
     records = []
     async for r in db.leaves.find(query, sort=[("leave_date", -1)]):
         r["id"] = str(r.pop("_id"))
+        # Include employee name for admin view
+        if current.get("role", "").upper() == "ADMIN" and r.get("employee_id"):
+            emp = await db.employees.find_one({"employee_id": r["employee_id"]}, {"full_name": 1})
+            r["employee_name"] = emp.get("full_name", r["employee_id"]) if emp else r["employee_id"]
         records.append(r)
     return records
+
+@app.get("/api/leaves/balance-summary")
+async def get_leave_balance_summary(year: Optional[int] = None, current: dict = Depends(get_current_employee)):
+    """Month-wise leave breakdown for a financial year.
+    Pass ?year=2025 for FY 2025-26, etc. Defaults to current FY.
+    Returns allocation (1 per month) and usage per month from April to March."""
+    
+    now = datetime.now(timezone.utc)
+    employee_id = current["employee_id"]
+    
+    # Determine financial year from optional year param
+    if year is not None:
+        fy_start_year = year
+    else:
+        fy_start_year = now.year if now.month >= 4 else now.year - 1
+    fy_end_year = fy_start_year + 1
+    
+    # Determine current FY start year for comparison
+    current_fy_start = now.year if now.month >= 4 else now.year - 1
+    is_current_fy = (fy_start_year == current_fy_start)
+    is_past_fy = (fy_start_year < current_fy_start)
+    
+    # For current FY, months earned = months elapsed; for past FY, all 12 earned
+    if is_past_fy:
+        months_earned = 12
+    elif is_current_fy:
+        months_earned = get_fin_year_months_earned()
+    else:
+        # Future FY — nothing earned yet
+        months_earned = 0
+    
+    fin_start = f"{fy_start_year}-04-01"
+    fin_end = f"{fy_end_year}-03-31"
+    
+    # Fetch all approved leaves for this employee in the selected FY
+    approved_leaves = []
+    async for leave in db.leaves.find({
+        "employee_id": employee_id,
+        "status": "Approved",
+        "leave_date": {"$gte": fin_start, "$lte": fin_end}
+    }):
+        approved_leaves.append(leave)
+    
+    # Build month-wise breakdown (April=month 0, May=month 1, ..., March=month 11)
+    month_names = ["April", "May", "June", "July", "August", "September",
+                   "October", "November", "December", "January", "February", "March"]
+    
+    monthly_data = []
+    running_casual_remaining = 0
+    running_sick_remaining = 0
+    
+    for i in range(12):
+        if i < 9:  # April(0) to December(8)
+            month_num = i + 4
+            year_val = fy_start_year
+        else:  # January(9) to March(11)
+            month_num = i - 8
+            year_val = fy_end_year
+        
+        month_label = f"{month_names[i]} {year_val}"
+        is_earned = (i + 1) <= months_earned
+        
+        # Count approved leaves in this specific month
+        casual_used_month = 0
+        sick_used_month = 0
+        for leave in approved_leaves:
+            leave_date_str = leave.get("leave_date", "")
+            try:
+                ld = datetime.fromisoformat(leave_date_str.replace("Z", "+00:00")) if "T" in leave_date_str else datetime.strptime(leave_date_str, "%Y-%m-%d")
+                if ld.month == month_num and ld.year == year_val:
+                    lt = leave.get("leave_type", "").upper()
+                    if "CASUAL" in lt:
+                        casual_used_month += 1
+                    elif "SICK" in lt:
+                        sick_used_month += 1
+            except (ValueError, TypeError):
+                continue
+        
+        if is_earned:
+            running_casual_remaining += 1 - casual_used_month
+            running_sick_remaining += 1 - sick_used_month
+        
+        monthly_data.append({
+            "month": month_label,
+            "month_index": i,
+            "is_earned": is_earned,
+            "casual_allocated": 1 if is_earned else 0,
+            "casual_used": casual_used_month,
+            "casual_remaining": max(0, running_casual_remaining) if is_earned else 0,
+            "sick_allocated": 1 if is_earned else 0,
+            "sick_used": sick_used_month,
+            "sick_remaining": max(0, running_sick_remaining) if is_earned else 0,
+        })
+    
+    # Totals
+    total_casual_used = sum(m["casual_used"] for m in monthly_data)
+    total_sick_used = sum(m["sick_used"] for m in monthly_data)
+    
+    return {
+        "financial_year": f"FY {fy_start_year}-{str(fy_end_year)[-2:]}",
+        "fy_label": f"April {fy_start_year} – March {fy_end_year}",
+        "fy_start_year": fy_start_year,
+        "is_current_fy": is_current_fy,
+        "months_earned": months_earned,
+        "total_casual_earned": months_earned,
+        "total_sick_earned": months_earned,
+        "total_casual_used": total_casual_used,
+        "total_sick_used": total_sick_used,
+        "remaining_casual": max(0, months_earned - total_casual_used),
+        "remaining_sick": max(0, months_earned - total_sick_used),
+        "monthly_breakdown": monthly_data,
+    }
 
 # ── Reports ───────────────────────────────────────────────────────────────────
 
@@ -808,7 +950,7 @@ async def get_me(current: dict = Depends(get_current_employee)):
     emp = await db.employees.find_one({"employee_id": current["employee_id"]})
     if emp:
         emp["id"] = str(emp.pop("_id"))
-        return inject_leave_balances(emp)
+        return await inject_leave_balances(emp)
     return {}
 
 @app.get("/api/employees")
@@ -817,7 +959,7 @@ async def list_employees(current: dict = Depends(get_current_employee)):
     employees = []
     async for emp in db.employees.find().sort("created_at", -1):
         emp["id"] = str(emp.pop("_id"))
-        employees.append(inject_leave_balances(emp))
+        employees.append(await inject_leave_balances(emp))
     return employees
 
 # ── Daily Updates ─────────────────────────────────────────────────────────────
@@ -941,13 +1083,8 @@ async def daily_cron(database=Depends(get_db)):
     today = now.strftime("%Y-%m-%d")
     yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
 
-    # 1. On the 1st of every month, add one casual leave and sick leave for everyone
-    if now.day == 1:
-        fin_year = get_current_fin_year()
-        await database.employees.update_many(
-            {},
-            {"$inc": {f"leave_balances.{fin_year}.casual": 1, f"leave_balances.{fin_year}.sick": 1}}
-        )
+    # Note: Leave balances are now computed dynamically (1 CL + 1 SL per elapsed month).
+    # No need to increment stored balances monthly.
 
     # 2. Process yesterday's attendance (Absents and Incomplete)
     # If they signed in but didn't sign out, mark them Absent

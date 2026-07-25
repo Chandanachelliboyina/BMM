@@ -132,15 +132,43 @@ def get_current_fin_year():
         return str(now.year)
     return str(now.year - 1)
 
-def get_fin_year_months_earned():
-    """Return how many months have elapsed (inclusive) from April 1 of current FY to now.
-    Each elapsed month earns 1 CL + 1 SL.
-    April=1, May=2, ... March=12."""
+def get_current_fin_year_int() -> int:
     now = datetime.now(timezone.utc)
-    if now.month >= 4:
-        return now.month - 3  # April=1, May=2, ..., Dec=9
+    return now.year if now.month >= 4 else now.year - 1
+
+def compute_months_earned_for_fy(fy_start_year: int, join_date_str: str = None) -> int:
+    """Calculate the number of earned months in a given financial year.
+    Starts from April (or join month if later).
+    Ends at March (or current month if it's the current FY)."""
+    
+    fy_start_date = datetime(fy_start_year, 4, 1, tzinfo=timezone.utc)
+    fy_end_date = datetime(fy_start_year + 1, 3, 31, 23, 59, 59, tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    
+    if now < fy_start_date:
+        return 0
+    elif now > fy_end_date:
+        end_date = fy_end_date
     else:
-        return now.month + 9  # Jan=10, Feb=11, Mar=12
+        end_date = now
+        
+    start_date = fy_start_date
+    if join_date_str:
+        try:
+            join_date_obj = datetime.fromisoformat(join_date_str.replace("Z", "+00:00")) if "T" in join_date_str else datetime.strptime(join_date_str, "%Y-%m-%d")
+            # Convert naive to aware if necessary
+            if join_date_obj.tzinfo is None:
+                join_date_obj = join_date_obj.replace(tzinfo=timezone.utc)
+                
+            if join_date_obj > fy_end_date:
+                return 0
+            if join_date_obj > fy_start_date:
+                start_date = join_date_obj
+        except (ValueError, TypeError):
+            pass
+            
+    months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month) + 1
+    return max(0, months)
 
 def get_fin_year_start():
     """Return the April 1 date string of the current financial year."""
@@ -169,7 +197,7 @@ async def compute_leave_usage(employee_id: str):
 
 async def inject_leave_balances(emp: dict):
     """Compute leave balances dynamically: earned (months elapsed) - used (approved leaves)."""
-    months_earned = get_fin_year_months_earned()
+    months_earned = compute_months_earned_for_fy(get_current_fin_year_int(), emp.get("created_at"))
     casual_used, sick_used = await compute_leave_usage(emp.get("employee_id", ""))
     
     # Check for admin overrides stored in leave_balances
@@ -721,7 +749,7 @@ async def update_leave_status(leave_id: str, req: LeaveStatusUpdate, current: di
     
     # If transitioning to Approved, validate balance
     if old_status != "Approved" and new_status == "Approved":
-        months_earned = get_fin_year_months_earned()
+        months_earned = compute_months_earned_for_fy(get_current_fin_year_int(), current.get("created_at"))
         casual_used, sick_used = await compute_leave_usage(leave["employee_id"])
         
         leave_type_upper = leave["leave_type"].upper()
@@ -815,14 +843,8 @@ async def get_leave_balance_summary(year: Optional[int] = None, current: dict = 
     is_current_fy = (fy_start_year == current_fy_start)
     is_past_fy = (fy_start_year < current_fy_start)
     
-    # For current FY, months earned = months elapsed; for past FY, all 12 earned
-    if is_past_fy:
-        months_earned = 12
-    elif is_current_fy:
-        months_earned = get_fin_year_months_earned()
-    else:
-        # Future FY — nothing earned yet
-        months_earned = 0
+    # Calculate months earned using the new logic which correctly bounds based on FY
+    months_earned = compute_months_earned_for_fy(fy_start_year, current.get("created_at"))
     
     fin_start = f"{fy_start_year}-04-01"
     fin_end = f"{fy_end_year}-03-31"

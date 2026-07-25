@@ -122,6 +122,8 @@ async def get_current_employee(creds: HTTPAuthorizationCredentials = Depends(bea
     emp = await database.employees.find_one({"employee_id": employee_id}, {"password_hash": 0})
     if not emp:
         raise HTTPException(status_code=401, detail="Employee not found")
+    if emp.get("has_access", True) == False:
+        raise HTTPException(status_code=403, detail="Your access has been revoked by the administrator.")
     emp["id"] = str(emp.pop("_id"))
     return emp
 
@@ -209,12 +211,21 @@ async def health():
 async def register(req: RegisterRequest, database=Depends(get_db)):
     emp_id = req.employee_id.strip().upper()
 
-    # Check duplicates
-    if await database.employees.find_one({"employee_id": emp_id}):
-        raise HTTPException(status_code=400, detail="Employee ID already taken")
-    if await database.employees.find_one({"email": req.email.strip().lower()}):
+    # Check duplicates and existing accounts created by admin
+    existing_emp = await database.employees.find_one({"employee_id": emp_id})
+    if existing_emp:
+        # If the existing employee doesn't have a password hash, it means they were created by admin
+        # and this is their first time registering on the portal, so we let them claim the account.
+        if "password_hash" in existing_emp and existing_emp["password_hash"]:
+            raise HTTPException(status_code=400, detail="Employee ID already taken")
+    
+    # We only check for email/mobile conflicts if they belong to a different employee
+    existing_email = await database.employees.find_one({"email": req.email.strip().lower()})
+    if existing_email and existing_email["employee_id"] != emp_id:
         raise HTTPException(status_code=400, detail="Email already registered")
-    if await database.employees.find_one({"mobile_number": req.mobile_number.strip()}):
+        
+    existing_mobile = await database.employees.find_one({"mobile_number": req.mobile_number.strip()})
+    if existing_mobile and existing_mobile["employee_id"] != emp_id:
         raise HTTPException(status_code=400, detail="Mobile number already registered")
 
     now = datetime.now(timezone.utc)
@@ -251,10 +262,15 @@ async def register(req: RegisterRequest, database=Depends(get_db)):
         "casual_leaves": remaining_months,
         "sick_leaves": remaining_months,
         "joining_date": now_iso[:10],
-        "created_at": now_iso,
         "updated_at": now_iso,
+        "has_access": True, # Ensure access is granted when they register
     }
-    await db.employees.insert_one(doc)
+    
+    if existing_emp:
+        await database.employees.update_one({"employee_id": emp_id}, {"$set": doc})
+    else:
+        doc["created_at"] = now_iso
+        await database.employees.insert_one(doc)
     token = create_token({"sub": emp_id})
     return {"employee_id": emp_id, "token": token, "message": "Registration successful"}
 
@@ -264,6 +280,8 @@ async def login(req: LoginRequest, database=Depends(get_db)):
     emp = await database.employees.find_one({"employee_id": emp_id})
     if not emp:
         raise HTTPException(status_code=401, detail="Invalid Employee ID or password")
+    if emp.get("has_access", True) == False:
+        raise HTTPException(status_code=403, detail="Your access has been revoked by the administrator.")
     if not verify_password(req.password, emp["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid Employee ID or password")
     token = create_token({"sub": emp_id})

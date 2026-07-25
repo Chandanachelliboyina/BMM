@@ -44,12 +44,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new Error(friendlyMsg);
   }
 
-  if (res.status === 401) {
+  if (res.status === 401 || res.status === 403) {
     clearToken();
     if (typeof window !== "undefined") {
       window.location.href = "/auth/login";
     }
-    throw new Error("Session expired. Please sign in again.");
+    throw new Error(res.status === 403 ? "Your access has been revoked by the administrator." : "Session expired. Please sign in again.");
   }
 
   if (!res.ok) {

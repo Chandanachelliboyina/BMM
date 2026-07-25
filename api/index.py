@@ -126,13 +126,26 @@ async def get_current_employee(creds: HTTPAuthorizationCredentials = Depends(bea
         raise HTTPException(status_code=403, detail="admin not give grant access to view your dashboard")
     emp["id"] = str(emp.pop("_id"))
     return emp
+def get_current_fin_year():
+    now = datetime.now(timezone.utc)
+    if now.month >= 4:
+        return str(now.year)
+    return str(now.year - 1)
+
+def inject_leave_balances(emp: dict):
+    fin_year = get_current_fin_year()
+    balances = emp.get("leave_balances", {}).get(fin_year, {})
+    # Default to 0 if not set for the current year
+    emp["casual_leaves"] = balances.get("casual", 0)
+    emp["sick_leaves"] = balances.get("sick", 0)
+    return emp
 
 def clean_emp(emp: dict) -> dict:
     emp = dict(emp)
     emp.pop("password_hash", None)
     if "_id" in emp:
         emp["id"] = str(emp.pop("_id"))
-    return emp
+    return inject_leave_balances(emp)
 
 # ── Models ────────────────────────────────────────────────────────────────────
 class RegisterRequest(BaseModel):
@@ -398,23 +411,40 @@ async def update_employee_leaves(employee_id: str, payload: dict, current: dict 
     casual_leaves = payload.get("casual_leaves")
     sick_leaves = payload.get("sick_leaves")
     
+    fin_year = get_current_fin_year()
+    
     updates = {}
     if casual_leaves is not None:
-        updates["casual_leaves"] = int(casual_leaves)
+        updates[f"leave_balances.{fin_year}.casual"] = int(casual_leaves)
     if sick_leaves is not None:
-        updates["sick_leaves"] = int(sick_leaves)
+        updates[f"leave_balances.{fin_year}.sick"] = int(sick_leaves)
         
     if not updates:
         raise HTTPException(status_code=400, detail="No leave updates provided")
+        
+    # Get current balances for audit log
+    emp = await db.employees.find_one({"employee_id": employee_id})
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+        
+    old_casual = emp.get("leave_balances", {}).get(fin_year, {}).get("casual", 0)
+    old_sick = emp.get("leave_balances", {}).get(fin_year, {}).get("sick", 0)
         
     result = await db.employees.update_one(
         {"employee_id": employee_id},
         {"$set": updates}
     )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Employee not found")
-        
-    return {"message": "Leaves updated", "casual_leaves": updates.get("casual_leaves"), "sick_leaves": updates.get("sick_leaves")}
+    
+    # Insert audit log
+    await db.audit_logs.insert_one({
+        "action": "BALANCE_UPDATED",
+        "admin_id": current["employee_id"],
+        "target_employee_id": employee_id,
+        "details": f"Updated balance for {fin_year}. Casual: {old_casual}->{casual_leaves}, Sick: {old_sick}->{sick_leaves}",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return {"message": "Leave balances updated"}
 
 
 # ── Attendance ─────────────────────────────────────────────────────────────────
@@ -645,31 +675,69 @@ async def update_leave_status(leave_id: str, req: LeaveStatusUpdate, current: di
     
     # If transitioning from Pending to Approved, deduct the leave balance
     if old_status != "Approved" and new_status == "Approved":
+        fin_year = get_current_fin_year()
+        emp = await db.employees.find_one({"employee_id": leave["employee_id"]})
+        if not emp:
+            raise HTTPException(status_code=404, detail="Employee not found")
+            
+        leave_type_upper = leave["leave_type"].upper()
+        if "CASUAL" in leave_type_upper:
+            current_balance = emp.get("leave_balances", {}).get(fin_year, {}).get("casual", 0)
+            if current_balance < 1:
+                raise HTTPException(status_code=400, detail="Insufficient casual leave balance for this financial year")
+            await db.employees.update_one(
+                {"employee_id": leave["employee_id"]},
+                {"$inc": {f"leave_balances.{fin_year}.casual": -1}}
+            )
+            # Audit log
+            await db.audit_logs.insert_one({
+                "action": "LEAVE_APPROVED",
+                "admin_id": current["employee_id"],
+                "target_employee_id": leave["employee_id"],
+                "details": f"Approved 1 Casual leave. Old balance: {current_balance}, New balance: {current_balance - 1}",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            
+        elif "SICK" in leave_type_upper:
+            current_balance = emp.get("leave_balances", {}).get(fin_year, {}).get("sick", 0)
+            if current_balance < 1:
+                raise HTTPException(status_code=400, detail="Insufficient sick leave balance for this financial year")
+            await db.employees.update_one(
+                {"employee_id": leave["employee_id"]},
+                {"$inc": {f"leave_balances.{fin_year}.sick": -1}}
+            )
+            # Audit log
+            await db.audit_logs.insert_one({
+                "action": "LEAVE_APPROVED",
+                "admin_id": current["employee_id"],
+                "target_employee_id": leave["employee_id"],
+                "details": f"Approved 1 Sick leave. Old balance: {current_balance}, New balance: {current_balance - 1}",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            
+    # If transitioning from Approved to Rejected/Pending, refund the leave
+    if old_status == "Approved" and new_status != "Approved":
+        fin_year = get_current_fin_year()
         leave_type_upper = leave["leave_type"].upper()
         if "CASUAL" in leave_type_upper:
             await db.employees.update_one(
                 {"employee_id": leave["employee_id"]},
-                {"$inc": {"casual_leaves": -1}}
+                {"$inc": {f"leave_balances.{fin_year}.casual": 1}}
             )
         elif "SICK" in leave_type_upper:
             await db.employees.update_one(
                 {"employee_id": leave["employee_id"]},
-                {"$inc": {"sick_leaves": -1}}
+                {"$inc": {f"leave_balances.{fin_year}.sick": 1}}
             )
             
-    # Optional: If transitioning from Approved to Rejected/Pending, refund the leave
-    if old_status == "Approved" and new_status != "Approved":
-        leave_type_upper = leave["leave_type"].upper()
-        if "CASUAL" in leave_type_upper:
-            await db.employees.update_one(
-                {"employee_id": leave["employee_id"]},
-                {"$inc": {"casual_leaves": 1}}
-            )
-        elif "SICK" in leave_type_upper:
-            await db.employees.update_one(
-                {"employee_id": leave["employee_id"]},
-                {"$inc": {"sick_leaves": 1}}
-            )
+    if new_status == "Rejected":
+        await db.audit_logs.insert_one({
+            "action": "LEAVE_REJECTED",
+            "admin_id": current["employee_id"],
+            "target_employee_id": leave["employee_id"],
+            "details": f"Rejected 1 {leave.get('leave_type')} leave.",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
 
     await db.leaves.update_one({"_id": ObjectId(leave_id)}, {"$set": {"status": new_status}})
     return {"message": f"Leave status updated to {new_status}"}
@@ -732,6 +800,25 @@ async def get_reports(current: dict = Depends(get_current_employee)):
         r["id"] = str(r.pop("_id"))
         records.append(r)
     return records
+
+# ── Employees ─────────────────────────────────────────────────────────────────
+
+@app.get("/api/employees/me")
+async def get_me(current: dict = Depends(get_current_employee)):
+    emp = await db.employees.find_one({"employee_id": current["employee_id"]})
+    if emp:
+        emp["id"] = str(emp.pop("_id"))
+        return inject_leave_balances(emp)
+    return {}
+
+@app.get("/api/employees")
+async def list_employees(current: dict = Depends(get_current_employee)):
+    # Everyone can view employees, maybe filter based on role if needed
+    employees = []
+    async for emp in db.employees.find().sort("created_at", -1):
+        emp["id"] = str(emp.pop("_id"))
+        employees.append(inject_leave_balances(emp))
+    return employees
 
 # ── Daily Updates ─────────────────────────────────────────────────────────────
 

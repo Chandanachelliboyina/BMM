@@ -30,17 +30,15 @@ function LandingPage() {
           </div>
           <div>
             {isLoggedIn ? (
-              <Link to="/attendance" className="block">
-                <Button asChild className="rounded-full px-6 shadow-sm hover:shadow-md transition-all">
-                  <span>
-                    Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" />
-                  </span>
+              <Link to="/attendance">
+                <Button className="rounded-full px-6 shadow-sm hover:shadow-md transition-all">
+                  Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
             ) : (
-              <Link to="/auth/login" className="block">
-                <Button asChild className="rounded-full px-6 shadow-sm hover:shadow-md transition-all">
-                  <span>Employee Login</span>
+              <Link to="/auth/login">
+                <Button className="rounded-full px-6 shadow-sm hover:shadow-md transition-all">
+                  Employee Login
                 </Button>
               </Link>
             )}
@@ -71,21 +69,17 @@ function LandingPage() {
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
                 {isLoggedIn ? (
-                  <Link to="/attendance" className="w-full sm:w-auto block">
-                    <Button asChild size="lg" className="w-full sm:w-auto rounded-full text-base h-14 px-8 shadow-lg shadow-primary/25 hover:shadow-xl hover:-translate-y-0.5 transition-all">
-                      <span>
-                        Access Dashboard
-                        <ArrowRight className="ml-2 h-5 w-5" />
-                      </span>
+                  <Link to="/attendance" className="w-full sm:w-auto">
+                    <Button size="lg" className="w-full sm:w-auto rounded-full text-base h-14 px-8 shadow-lg shadow-primary/25 hover:shadow-xl hover:-translate-y-0.5 transition-all">
+                      Access Dashboard
+                      <ArrowRight className="ml-2 h-5 w-5" />
                     </Button>
                   </Link>
                 ) : (
-                  <Link to="/auth/login" className="w-full sm:w-auto block">
-                    <Button asChild size="lg" className="w-full sm:w-auto rounded-full text-base h-14 px-8 shadow-lg shadow-primary/25 hover:shadow-xl hover:-translate-y-0.5 transition-all">
-                      <span>
-                        Staff Portal Login
-                        <ArrowRight className="ml-2 h-5 w-5" />
-                      </span>
+                  <Link to="/auth/login" className="w-full sm:w-auto">
+                    <Button size="lg" className="w-full sm:w-auto rounded-full text-base h-14 px-8 shadow-lg shadow-primary/25 hover:shadow-xl hover:-translate-y-0.5 transition-all">
+                      Staff Portal Login
+                      <ArrowRight className="ml-2 h-5 w-5" />
                     </Button>
                   </Link>
                 )}

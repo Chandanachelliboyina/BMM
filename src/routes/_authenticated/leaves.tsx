@@ -105,30 +105,20 @@ function LeavesPage() {
     submitMutation.mutate();
   };
 
-  const passedMonthsInFinYear = currentMonth >= 3 ? currentMonth - 3 : currentMonth + 9;
-  const initialLeaves = 12;
-  const totalLeaves = initialLeaves - passedMonthsInFinYear;
-  
   let takenCasual = 0;
   let takenSick = 0;
 
   if (leaves) {
-    leaves.forEach((l) => {
+    leaves.forEach((l: any) => {
       if (l.leave_type === "Casual") takenCasual++;
       if (l.leave_type === "Sick") takenSick++;
     });
   }
 
-  let absentDays = 0;
-  if (employee && attendance) {
-    const present = attendance.filter((r: any) => r.login_time && r.logout_time).length;
-    const joined = employee.joining_date ? new Date(employee.joining_date) : new Date(employee.created_at || Date.now());
-    const daysSince = Math.max(1, Math.ceil((Date.now() - joined.getTime()) / (1000 * 60 * 60 * 24)));
-    absentDays = Math.max(0, daysSince - present);
-  }
-
-  const remainingCasual = Math.max(0, totalLeaves - takenCasual - absentDays);
-  const remainingSick = Math.max(0, totalLeaves - takenSick);
+  const remainingCasual = employee?.casual_leaves ?? 0;
+  const remainingSick = employee?.sick_leaves ?? 0;
+  const totalCasual = remainingCasual + takenCasual;
+  const totalSick = remainingSick + takenSick;
 
   return (
     <AppShell title="Leave Management">
@@ -151,11 +141,11 @@ function LeavesPage() {
             <CardContent>
               <div className="grid grid-cols-3 gap-4 text-center mt-2">
                 <div>
-                  <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">{totalLeaves}</div>
+                  <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">{totalCasual}</div>
                   <div className="text-xs text-blue-700 dark:text-blue-400">Total</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">{takenCasual + absentDays}</div>
+                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">{takenCasual}</div>
                   <div className="text-xs text-blue-700 dark:text-blue-400">Taken</div>
                 </div>
                 <div>
@@ -173,7 +163,7 @@ function LeavesPage() {
             <CardContent>
               <div className="grid grid-cols-3 gap-4 text-center mt-2">
                 <div>
-                  <div className="text-2xl font-bold text-purple-900 dark:text-purple-100">{totalLeaves}</div>
+                  <div className="text-2xl font-bold text-purple-900 dark:text-purple-100">{totalSick}</div>
                   <div className="text-xs text-purple-700 dark:text-purple-400">Total</div>
                 </div>
                 <div>

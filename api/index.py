@@ -616,35 +616,69 @@ class LeaveIn(BaseModel):
 async def create_leave(req: LeaveIn, current: dict = Depends(get_current_employee)):
     now_iso = datetime.now(timezone.utc).isoformat()
     
-    # Deduct leave balance instantly upon applying (approval logic)
-    leave_type_upper = req.leave_type.upper()
-    if "CASUAL" in leave_type_upper:
-        await db.employees.update_one(
-            {"employee_id": current["employee_id"]},
-            {"$inc": {"casual_leaves": -1}}
-        )
-    elif "SICK" in leave_type_upper:
-        await db.employees.update_one(
-            {"employee_id": current["employee_id"]},
-            {"$inc": {"sick_leaves": -1}}
-        )
-
     doc = {
         "employee_id": current["employee_id"],
         "leave_date": req.leave_date,
         "leave_type": req.leave_type,
         "reason": req.reason or "",
-        "status": req.status or "Approved",
+        "status": req.status if req.status and req.status != "Approved" else "Pending",
         "image_b64": req.image_b64 or None,
         "created_at": now_iso,
     }
     result = await db.leaves.insert_one(doc)
     return {"id": str(result.inserted_id)}
 
+class LeaveStatusUpdate(BaseModel):
+    status: str
+
+@app.put("/api/leaves/{leave_id}/status")
+async def update_leave_status(leave_id: str, req: LeaveStatusUpdate, current: dict = Depends(get_current_employee)):
+    if current.get("role", "").upper() != "ADMIN":
+        raise HTTPException(status_code=403, detail="Only admins can update leave status")
+    
+    leave = await db.leaves.find_one({"_id": ObjectId(leave_id)})
+    if not leave:
+        raise HTTPException(status_code=404, detail="Leave not found")
+        
+    old_status = leave.get("status", "Pending")
+    new_status = req.status
+    
+    # If transitioning from Pending to Approved, deduct the leave balance
+    if old_status != "Approved" and new_status == "Approved":
+        leave_type_upper = leave["leave_type"].upper()
+        if "CASUAL" in leave_type_upper:
+            await db.employees.update_one(
+                {"employee_id": leave["employee_id"]},
+                {"$inc": {"casual_leaves": -1}}
+            )
+        elif "SICK" in leave_type_upper:
+            await db.employees.update_one(
+                {"employee_id": leave["employee_id"]},
+                {"$inc": {"sick_leaves": -1}}
+            )
+            
+    # Optional: If transitioning from Approved to Rejected/Pending, refund the leave
+    if old_status == "Approved" and new_status != "Approved":
+        leave_type_upper = leave["leave_type"].upper()
+        if "CASUAL" in leave_type_upper:
+            await db.employees.update_one(
+                {"employee_id": leave["employee_id"]},
+                {"$inc": {"casual_leaves": 1}}
+            )
+        elif "SICK" in leave_type_upper:
+            await db.employees.update_one(
+                {"employee_id": leave["employee_id"]},
+                {"$inc": {"sick_leaves": 1}}
+            )
+
+    await db.leaves.update_one({"_id": ObjectId(leave_id)}, {"$set": {"status": new_status}})
+    return {"message": f"Leave status updated to {new_status}"}
+
 @app.get("/api/leaves")
 async def get_leaves(current: dict = Depends(get_current_employee)):
-    query = {"employee_id": current["employee_id"]}
+    query = {}
     if current.get("role", "").upper() != "ADMIN":
+        query["employee_id"] = current["employee_id"]
         thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
         query["created_at"] = {"$gte": thirty_days_ago}
         

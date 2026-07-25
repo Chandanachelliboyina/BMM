@@ -19,7 +19,7 @@ export const Route = createFileRoute("/_authenticated/leaves")({
 
 function LeavesPage() {
   const queryClient = useQueryClient();
-  const { employee } = useEmployee();
+  const { employee, refresh: refreshEmployee } = useEmployee();
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Form State
@@ -76,7 +76,7 @@ function LeavesPage() {
       const res = await fetch(`${BASE}/api/leaves`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ leave_date: leaveDate, leave_type: leaveType, reason: reason, status: "Approved", image_b64 }),
+        body: JSON.stringify({ leave_date: leaveDate, leave_type: leaveType, reason: reason, status: "Pending", image_b64 }),
       });
       if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.detail || "Failed"); }
     },
@@ -93,6 +93,30 @@ function LeavesPage() {
       toast.error(error.message);
       setIsSubmitting(false);
     },
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const BASE = BASE_URL;
+      const token = getToken();
+      const res = await fetch(`${BASE}/api/leaves/${id}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b?.detail || "Failed to update status");
+      }
+    },
+    onSuccess: () => {
+      toast.success("Leave status updated!");
+      queryClient.invalidateQueries({ queryKey: ["leaves"] });
+      refreshEmployee();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    }
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -277,7 +301,14 @@ function LeavesPage() {
                   {leaves.map((leave) => (
                     <div key={leave.id} className="p-4 rounded-lg border bg-card text-card-foreground shadow-sm flex items-center justify-between">
                       <div>
-                        <div className="font-semibold">{new Date(leave.leave_date).toLocaleDateString()}</div>
+                        <div className="font-semibold flex items-center gap-2">
+                          {new Date(leave.leave_date).toLocaleDateString()}
+                          {employee?.role?.toUpperCase() === "ADMIN" && employee.employee_id !== leave.employee_id && (
+                            <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
+                              {leave.employee_id}
+                            </span>
+                          )}
+                        </div>
                         <div className="text-sm text-muted-foreground mt-1">{leave.reason || "No reason provided"}</div>
                         {leave.image_b64 && (
                           <div className="mt-3">
@@ -302,6 +333,28 @@ function LeavesPage() {
                         }`}>
                           {leave.status}
                         </div>
+                        {employee?.role?.toUpperCase() === "ADMIN" && leave.status === "Pending" && (
+                          <div className="flex gap-2 mt-2">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="h-7 text-xs border-green-200 text-green-700 hover:bg-green-50 dark:border-green-900 dark:text-green-400 dark:hover:bg-green-950/50" 
+                              onClick={() => updateStatusMutation.mutate({ id: leave.id, status: "Approved" })}
+                              disabled={updateStatusMutation.isPending}
+                            >
+                              Approve
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/50" 
+                              onClick={() => updateStatusMutation.mutate({ id: leave.id, status: "Rejected" })}
+                              disabled={updateStatusMutation.isPending}
+                            >
+                              Reject
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

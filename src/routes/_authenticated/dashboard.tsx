@@ -51,7 +51,7 @@ function DashboardPage() {
         absent: Math.max(0, daysSince - present),
         todayTime: todayRow ? format(new Date(todayRow.login_time), "hh:mm a") : null,
         todayLogout: todayRow?.logout_time ? format(new Date(todayRow.logout_time), "hh:mm a") : null,
-        status: todayRow ? (todayRow.logout_time ? "Checked Out" : "Checked In (Absent if no checkout)") : "Absent",
+        status: todayRow ? (todayRow.logout_time ? "Present" : "Check-in (Absent)") : "Absent",
         casualLeaveBalance: employee.casual_leaves ?? 0,
         sickLeaveBalance: employee.sick_leaves ?? 0
       });
@@ -139,9 +139,14 @@ function DashboardPage() {
           {/* Sections */}
           <div className="grid gap-4 lg:grid-cols-3">
             <Card className="p-6 shadow-card lg:col-span-2 bg-gradient-to-br from-background to-secondary/20">
-              <div className="flex items-center gap-2 mb-4">
-                <ClipboardList className="w-5 h-5 text-primary" />
-                <h3 className="font-semibold">Latest Attendance Card</h3>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="w-5 h-5 text-primary" />
+                  <h3 className="font-semibold">Latest Attendance Card</h3>
+                </div>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/history">View Attendance History</Link>
+                </Button>
               </div>
               {latestCard ? (
                 <div className="flex flex-col sm:flex-row gap-6">

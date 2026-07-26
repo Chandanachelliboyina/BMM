@@ -25,6 +25,7 @@ function HistoryPage() {
   
   const [search, setSearch] = useState("");
   const [filterMonth, setFilterMonth] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
 
   useEffect(() => {
     if (!employee) return;
@@ -50,8 +51,15 @@ function HistoryPage() {
         return date.getMonth().toString() === filterMonth;
       });
     }
+    if (filterStatus !== "all") {
+      if (filterStatus === "present") {
+        result = result.filter(r => !!r.logout_time);
+      } else if (filterStatus === "absent") {
+        result = result.filter(r => !r.logout_time);
+      }
+    }
     setFiltered(result);
-  }, [search, filterMonth, records]);
+  }, [search, filterMonth, filterStatus, records]);
 
   const exportCSV = () => {
     const headers = ["Date", "Employee ID", "Name", "Login Time", "Logout Time", "Status", "Location"];
@@ -98,8 +106,8 @@ function HistoryPage() {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 mb-6">
-            <div className="relative flex-1 max-w-sm">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-4 mb-6">
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search name or ID..."
@@ -108,6 +116,18 @@ function HistoryPage() {
                 className="pl-9"
               />
             </div>
+            
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="present">Present</SelectItem>
+                <SelectItem value="absent">Check-in (Absent)</SelectItem>
+              </SelectContent>
+            </Select>
+
             <Select value={filterMonth} onValueChange={setFilterMonth}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Filter by Month" />
@@ -123,9 +143,9 @@ function HistoryPage() {
             </Select>
           </div>
 
-          <div className="rounded-md border overflow-hidden">
+          <div className="rounded-md border overflow-auto max-h-[60vh]">
             <Table>
-              <TableHeader className="bg-muted/50">
+              <TableHeader className="bg-muted/50 sticky top-0 z-10">
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Employee</TableHead>
@@ -139,7 +159,7 @@ function HistoryPage() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       No attendance records found.
                     </TableCell>
                   </TableRow>
@@ -165,7 +185,7 @@ function HistoryPage() {
                         <TableCell>{hours}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={record.logout_time ? "bg-success/10 text-success" : "bg-warning/10 text-warning-foreground"}>
-                            {record.logout_time ? "Completed" : "Checked In"}
+                            {record.logout_time ? "Present" : "Check-in (Absent)"}
                           </Badge>
                         </TableCell>
                         <TableCell className="max-w-[200px] truncate text-xs" title={record.logout_full_address || record.full_address || "N/A"}>

@@ -62,6 +62,9 @@ function LeavesPage() {
   const fyOptions = useMemo(() => getFYOptions(), []);
   const isCurrentFY = selectedYear === getCurrentFYStart();
   
+  // Status Filter
+  const [filterStatus, setFilterStatus] = useState<string>("All");
+  
   // Form State
   const [leaveDate, setLeaveDate] = useState("");
   const [leaveType, setLeaveType] = useState<string>("");
@@ -183,6 +186,12 @@ function LeavesPage() {
   const canGoPrev = selectedYear > 2025;
   const canGoNext = selectedYear < getCurrentFYStart();
 
+  const filteredLeaves = useMemo(() => {
+    if (!leaves) return [];
+    if (filterStatus === "All") return leaves;
+    return leaves.filter((l: any) => l.status === filterStatus || (filterStatus === "Approve" && l.status === "Approved") || (filterStatus === "Reject" && l.status === "Rejected"));
+  }, [leaves, filterStatus]);
+
   return (
     <AppShell title="Leave Management">
       <div className="p-4 md:p-8 pt-6 max-w-6xl mx-auto space-y-8">
@@ -195,41 +204,54 @@ function LeavesPage() {
             </p>
           </div>
 
-          {/* Year Selector */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9"
-              onClick={() => setSelectedYear((y) => y - 1)}
-              disabled={!canGoPrev}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Select
-              value={String(selectedYear)}
-              onValueChange={(val) => setSelectedYear(Number(val))}
-            >
-              <SelectTrigger className="w-[150px] h-9 font-semibold">
-                <SelectValue />
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="w-[120px] h-9 font-medium">
+                <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                {fyOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={String(opt.value)}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
+                <SelectItem value="All">All Status</SelectItem>
+                <SelectItem value="Pending">Pending</SelectItem>
+                <SelectItem value="Approved">Approved</SelectItem>
+                <SelectItem value="Rejected">Rejected</SelectItem>
               </SelectContent>
             </Select>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9"
-              onClick={() => setSelectedYear((y) => y + 1)}
-              disabled={!canGoNext}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+
+            <div className="flex items-center gap-1 border rounded-md p-0.5">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-sm"
+                onClick={() => setSelectedYear((y) => y - 1)}
+                disabled={!canGoPrev}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Select
+                value={String(selectedYear)}
+                onValueChange={(val) => setSelectedYear(Number(val))}
+              >
+                <SelectTrigger className="w-[130px] h-8 font-semibold border-0 shadow-none focus:ring-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {fyOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={String(opt.value)}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-sm"
+                onClick={() => setSelectedYear((y) => y + 1)}
+                disabled={!canGoNext}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -258,11 +280,8 @@ function LeavesPage() {
             <CardContent>
               <div className="grid grid-cols-3 gap-4 text-center mt-2">
                 <div className="p-3 rounded-lg bg-blue-100/60 dark:bg-blue-900/30">
-                  <div className="flex items-center justify-center gap-1">
-                    <TrendingUp className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  </div>
                   <div className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">{earnedCL}</div>
-                  <div className="text-xs font-medium text-blue-700 dark:text-blue-400">Earned</div>
+                  <div className="text-xs font-medium text-blue-700 dark:text-blue-400">Total</div>
                 </div>
                 <div className="p-3 rounded-lg bg-red-100/60 dark:bg-red-900/20">
                   <div className="flex items-center justify-center gap-1">
@@ -294,11 +313,8 @@ function LeavesPage() {
             <CardContent>
               <div className="grid grid-cols-3 gap-4 text-center mt-2">
                 <div className="p-3 rounded-lg bg-purple-100/60 dark:bg-purple-900/30">
-                  <div className="flex items-center justify-center gap-1">
-                    <TrendingUp className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                  </div>
                   <div className="text-2xl font-bold text-purple-900 dark:text-purple-100 mt-1">{earnedSL}</div>
-                  <div className="text-xs font-medium text-purple-700 dark:text-purple-400">Earned</div>
+                  <div className="text-xs font-medium text-purple-700 dark:text-purple-400">Total</div>
                 </div>
                 <div className="p-3 rounded-lg bg-red-100/60 dark:bg-red-900/20">
                   <div className="flex items-center justify-center gap-1">
@@ -420,9 +436,9 @@ function LeavesPage() {
                 <div className="flex justify-center p-8">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
-              ) : leaves && leaves.length > 0 ? (
+              ) : filteredLeaves && filteredLeaves.length > 0 ? (
                 <div className="space-y-3">
-                  {leaves.map((leave: any) => (
+                  {filteredLeaves.map((leave: any) => (
                     <div key={leave.id} className="p-4 rounded-lg border bg-card text-card-foreground shadow-sm flex items-center justify-between gap-4">
                       <div className="min-w-0 flex-1">
                         <div className="font-semibold flex items-center gap-2 flex-wrap">
@@ -490,7 +506,7 @@ function LeavesPage() {
                 </div>
               ) : (
                 <div className="text-center p-8 text-muted-foreground border-2 border-dashed rounded-lg">
-                  No leaves applied for {fyTitle}.
+                  No leaves match the selected filter.
                 </div>
               )}
             </CardContent>

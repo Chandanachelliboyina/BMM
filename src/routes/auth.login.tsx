@@ -105,13 +105,12 @@ function LoginPage() {
                 <Checkbox checked={remember} onCheckedChange={(v) => setRemember(!!v)} />
                 <span>Remember me</span>
               </label>
-              <button
-                type="button"
+              <Link
+                to="/auth/forgot-password"
                 className="text-primary hover:underline font-medium"
-                onClick={() => toast.info("Please contact your BMM administrator to reset your password.")}
               >
                 Forgot password?
-              </button>
+              </Link>
             </div>
 
             <Button type="submit" disabled={loading} className="w-full h-11 bg-gradient-primary shadow-elegant">

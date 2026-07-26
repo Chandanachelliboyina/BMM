@@ -97,6 +97,20 @@ export async function apiRegister(payload: Record<string, unknown>): Promise<Reg
   });
 }
 
+export async function apiRequestResetLink(payload: Record<string, unknown>): Promise<{ message: string, reset_token: string }> {
+  return request<{ message: string, reset_token: string }>("/api/auth/forgot-password/request-link", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function apiResetPasswordWithToken(payload: Record<string, unknown>): Promise<{ message: string }> {
+  return request<{ message: string }>("/api/auth/forgot-password/verify-token", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function apiMe(): Promise<Employee | null> {
   if (!getToken()) return null;
   try {

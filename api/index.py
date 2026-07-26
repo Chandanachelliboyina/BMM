@@ -12,6 +12,7 @@ import bcrypt
 import jwt as pyjwt
 import base64
 import certifi
+import uuid
 from contextlib import asynccontextmanager
 
 # Load .env — works locally; on Vercel, env vars are injected by the platform
@@ -250,6 +251,14 @@ class LoginRequest(BaseModel):
     employee_id: str
     password: str
 
+class ResetLinkRequest(BaseModel):
+    employee_id: str
+    email: str
+
+class VerifyTokenRequest(BaseModel):
+    token: str
+    new_password: str
+
 class UpdateProfileRequest(BaseModel):
     email: Optional[str] = None
     mobile_number: Optional[str] = None
@@ -373,6 +382,61 @@ async def login(req: LoginRequest, database=Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid Employee ID or password")
     token = create_token({"sub": emp_id})
     return {"token": token, "employee_id": emp_id}
+
+@app.post("/api/auth/forgot-password/request-link")
+async def request_reset_link(req: ResetLinkRequest, database=Depends(get_db)):
+    emp_id = req.employee_id.strip().upper()
+    emp = await database.employees.find_one({"employee_id": emp_id})
+    
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+        
+    if emp.get("email", "").strip().lower() != req.email.strip().lower():
+        raise HTTPException(status_code=400, detail="Email does not match our records")
+        
+    # Generate unique secure token
+    token = str(uuid.uuid4())
+    expiry = datetime.now(timezone.utc) + timedelta(minutes=15)
+    
+    await database.employees.update_one(
+        {"employee_id": emp_id},
+        {"$set": {
+            "reset_token": token,
+            "reset_token_expiry": expiry.isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    # In a real app, send email here. We return the token to simulate the email flow.
+    return {"message": "Verification link generated", "reset_token": token}
+
+@app.post("/api/auth/forgot-password/verify-token")
+async def verify_reset_token(req: VerifyTokenRequest, database=Depends(get_db)):
+    # Find user by token
+    emp = await database.employees.find_one({"reset_token": req.token})
+    if not emp:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+        
+    # Check expiry
+    expiry_str = emp.get("reset_token_expiry")
+    if not expiry_str:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+        
+    expiry = datetime.fromisoformat(expiry_str)
+    if datetime.now(timezone.utc) > expiry:
+        raise HTTPException(status_code=400, detail="Reset link has expired")
+        
+    # Valid token, update password
+    new_hash = hash_password(req.new_password)
+    
+    await database.employees.update_one(
+        {"_id": emp["_id"]},
+        {
+            "$set": {"password_hash": new_hash, "updated_at": datetime.now(timezone.utc).isoformat()},
+            "$unset": {"reset_token": "", "reset_token_expiry": ""}
+        }
+    )
+    return {"message": "Password successfully reset"}
 
 @app.get("/api/auth/me")
 async def me(current: dict = Depends(get_current_employee)):

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Bell, CheckCircle2, AlertTriangle, Info, Clock, Check, Send, Loader2 } from "lucide-react";
+import { Bell, CheckCircle2, AlertTriangle, Info, Clock, Check, Send, Loader2, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiGetNotifications, apiMarkNotificationRead, apiMarkAllNotificationsRead, apiGetEmployees, apiCreateNotification, DBNotification } from "@/lib/api";
+import { apiGetNotifications, apiMarkNotificationRead, apiMarkAllNotificationsRead, apiGetEmployees, apiCreateNotification, apiDeleteNotification, DBNotification } from "@/lib/api";
 import { useEmployee } from "@/hooks/useEmployee";
 import { toast } from "sonner";
 
@@ -59,6 +59,14 @@ function NotificationsPage() {
     }
   });
 
+  const deleteNotifMutation = useMutation({
+    mutationFn: apiDeleteNotification,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      toast.success("Notification deleted");
+    }
+  });
+
   const createNotifMutation = useMutation({
     mutationFn: apiCreateNotification,
     onSuccess: () => {
@@ -95,6 +103,10 @@ function NotificationsPage() {
 
   const markAsRead = (id: string) => {
     markReadMutation.mutate(id);
+  };
+
+  const deleteNotification = (id: string) => {
+    deleteNotifMutation.mutate(id);
   };
 
   const getIcon = (type: string) => {
@@ -271,15 +283,25 @@ function NotificationsPage() {
                     {notification.message}
                   </p>
                   
-                  {!notification.read && (
+                  <div className="flex gap-4 items-center">
+                    {!notification.read && (
+                      <button 
+                        onClick={() => markAsRead(notification.id)}
+                        disabled={markReadMutation.isPending}
+                        className="mt-3 text-xs font-medium text-primary hover:underline opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 disabled:opacity-50"
+                      >
+                        Mark as read
+                      </button>
+                    )}
                     <button 
-                      onClick={() => markAsRead(notification.id)}
-                      disabled={markReadMutation.isPending}
-                      className="mt-3 text-xs font-medium text-primary hover:underline opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 disabled:opacity-50"
+                      onClick={() => deleteNotification(notification.id)}
+                      disabled={deleteNotifMutation.isPending}
+                      className="mt-3 text-xs font-medium text-red-500 hover:text-red-700 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 disabled:opacity-50"
                     >
-                      Mark as read
+                      <Trash2 className="w-3 h-3" />
+                      Delete
                     </button>
-                  )}
+                  </div>
                 </div>
               </div>
             </Card>

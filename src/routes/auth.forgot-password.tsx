@@ -1,8 +1,8 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, ArrowLeft, MailCheck } from "lucide-react";
-import { apiRequestResetLink } from "@/lib/api";
+import { Loader2, ArrowLeft, MailCheck, ShieldCheck } from "lucide-react";
+import { apiRequestResetLink, apiResetPasswordWithToken } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,13 +17,18 @@ export const Route = createFileRoute("/auth/forgot-password")({
 });
 
 function ForgotPasswordPage() {
+  const navigate = useNavigate();
+  const [step, setStep] = useState<"request" | "reset">("request");
   const [employeeId, setEmployeeId] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const [linkSent, setLinkSent] = useState(false);
-  const [resetToken, setResetToken] = useState("");
+  
+  // Reset step state
+  const [otp, setOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!employeeId.trim() || !email.trim()) {
       toast.error("Please fill in all fields");
@@ -35,23 +40,45 @@ function ForgotPasswordPage() {
         employee_id: employeeId.trim().toUpperCase(),
         email: email.trim(),
       });
-      setLinkSent(true);
-      setResetToken(res.reset_token);
+      setStep("reset");
       
-      // Simulate sending email by showing the link in toast
+      // Let the user know the OTP was sent to their email
       toast.success(
         <div className="flex flex-col gap-2">
-          <span className="font-semibold text-sm">Simulated Email Received!</span>
-          <span className="text-xs">In a real app, this would go to {email}.</span>
-          <Link to="/auth/reset-password" search={{ token: res.reset_token }} className="text-xs text-blue-600 underline truncate">
-            Click here to reset password
-          </Link>
+          <span className="font-semibold text-sm">OTP Sent!</span>
+          <span className="text-xs">We have sent a 6-digit verification code to {email}.</span>
         </div>,
-        { duration: 15000 }
+        { duration: 5000 }
       );
     } catch (err: any) {
       console.error(err);
-      toast.error(err?.message || "Failed to send reset link");
+      toast.error(err?.message || "Failed to send OTP");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otp.trim() || !newPassword || !confirmPassword) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    setLoading(true);
+    try {
+      await apiResetPasswordWithToken({
+        token: otp.trim(),
+        new_password: newPassword,
+      });
+      toast.success("Password reset successfully. You can now log in.");
+      navigate({ to: "/auth/login", replace: true });
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || "Password reset failed");
     } finally {
       setLoading(false);
     }
@@ -69,7 +96,7 @@ function ForgotPasswordPage() {
         <div className="max-w-md">
           <h1 className="text-4xl font-bold leading-tight">Secure your account easily.</h1>
           <p className="mt-4 text-primary-foreground/80 leading-relaxed">
-            Verify your Employee ID and registered email to receive a secure password reset link.
+            Verify your Employee ID and registered email to receive a secure OTP for resetting your password.
           </p>
         </div>
         <p className="text-sm text-primary-foreground/70">© {new Date().getFullYear()} Bheemabhai Mahila Mandali (BMM)</p>
@@ -77,48 +104,82 @@ function ForgotPasswordPage() {
 
       <div className="flex items-center justify-center p-6 sm:p-12 bg-background">
         <div className="w-full max-w-md">
-          <Link to="/auth/login" className="inline-flex items-center text-sm font-medium text-muted-foreground hover:text-primary mb-8 transition-colors">
+          <button 
+            onClick={() => step === "reset" ? setStep("request") : navigate({ to: "/auth/login" })}
+            className="inline-flex items-center text-sm font-medium text-muted-foreground hover:text-primary mb-8 transition-colors bg-transparent border-none cursor-pointer"
+          >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to login
-          </Link>
+            {step === "reset" ? "Back to email" : "Back to login"}
+          </button>
           
           <div className="lg:hidden flex items-center gap-2 mb-8 text-primary">
             <img src="/BMM_LOGO.jpg" alt="BMM Logo" className="w-8 h-8 object-cover rounded-md shadow-sm" />
             <span className="font-semibold text-lg">BMM Portal</span>
           </div>
           
-          {linkSent ? (
-            <div className="text-center space-y-6 animate-in fade-in zoom-in duration-500">
-              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-                <MailCheck className="w-8 h-8 text-primary" />
-              </div>
-              <div className="space-y-2">
-                <h2 className="text-2xl font-bold tracking-tight">Check your email</h2>
-                <p className="text-muted-foreground">
-                  We've sent a secure password reset link to <span className="font-medium text-foreground">{email}</span>
-                </p>
-                
-                <div className="mt-6 p-4 rounded-lg bg-primary/5 border border-primary/20">
-                  <p className="text-sm font-semibold mb-2">Simulated Email Received!</p>
-                  <Link 
-                    to="/auth/reset-password" 
-                    search={{ token: resetToken }}
-                    className="text-sm text-primary hover:underline block break-all"
-                  >
-                    Click here to reset your password
-                  </Link>
+          {step === "reset" ? (
+            <div className="animate-in fade-in zoom-in duration-500">
+              <div className="flex justify-center mb-6">
+                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+                  <ShieldCheck className="w-8 h-8 text-primary" />
                 </div>
               </div>
-              <Button variant="outline" className="w-full" onClick={() => setLinkSent(false)}>
-                Try another email
-              </Button>
+              <h2 className="text-3xl font-bold tracking-tight text-center">Verify & Reset</h2>
+              <p className="mt-2 text-muted-foreground text-center">
+                Enter the 6-digit OTP sent to <span className="font-medium text-foreground">{email}</span>
+              </p>
+              
+              <form onSubmit={handleResetPassword} className="mt-8 space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="otp">6-Digit OTP</Label>
+                  <Input
+                    id="otp"
+                    placeholder="Enter OTP"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value)}
+                    maxLength={6}
+                    className="font-mono tracking-widest text-lg h-12"
+                    required
+                  />
+                </div>
+                
+                <div className="space-y-2 pt-2">
+                  <Label htmlFor="new-password">New Password</Label>
+                  <Input
+                    id="new-password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    minLength={6}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="confirm-password">Confirm Password</Label>
+                  <Input
+                    id="confirm-password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    minLength={6}
+                  />
+                </div>
+
+                <Button type="submit" disabled={loading} className="w-full h-11 bg-gradient-primary shadow-elegant mt-4">
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Reset Password"}
+                </Button>
+              </form>
             </div>
           ) : (
             <>
               <h2 className="text-3xl font-bold tracking-tight">Reset Password</h2>
-              <p className="mt-2 text-muted-foreground">Enter your details below to receive a reset link.</p>
+              <p className="mt-2 text-muted-foreground">Enter your details below to receive a secure OTP.</p>
 
-              <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+              <form onSubmit={handleRequestOtp} className="mt-8 space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="empid">Employee ID</Label>
                   <Input
@@ -144,7 +205,7 @@ function ForgotPasswordPage() {
                 </div>
 
                 <Button type="submit" disabled={loading} className="w-full h-11 bg-gradient-primary shadow-elegant mt-2">
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send reset link"}
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send OTP"}
                 </Button>
               </form>
             </>
@@ -154,3 +215,4 @@ function ForgotPasswordPage() {
     </div>
   );
 }
+

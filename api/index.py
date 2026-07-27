@@ -286,6 +286,12 @@ class CheckoutRequest(BaseModel):
     full_address: Optional[str] = None
     selfie_b64: Optional[str] = None
 
+class HolidayCreate(BaseModel):
+    start_date: str
+    end_date: str
+    name: str
+    remarks: Optional[str] = None
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/")
@@ -300,6 +306,43 @@ async def health():
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Database ping failed: {e}")
+
+# ── Holidays ──────────────────────────────────────────────────────────────────
+
+@app.post("/api/holidays", status_code=201)
+async def create_holiday(req: HolidayCreate, current: dict = Depends(get_current_employee)):
+    if current.get("role", "").upper() != "ADMIN":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "start_date": req.start_date,
+        "end_date": req.end_date,
+        "name": req.name,
+        "remarks": req.remarks,
+        "created_by": current["employee_id"],
+        "created_at": now_iso
+    }
+    result = await db.holidays.insert_one(doc)
+    doc["id"] = str(result.inserted_id)
+    doc.pop("_id", None)
+    return doc
+
+@app.get("/api/holidays")
+async def get_holidays(current: dict = Depends(get_current_employee)):
+    records = []
+    async for r in db.holidays.find({}, sort=[("start_date", 1)]):
+        r["id"] = str(r.pop("_id"))
+        records.append(r)
+    return records
+
+@app.delete("/api/holidays/{holiday_id}")
+async def delete_holiday(holiday_id: str, current: dict = Depends(get_current_employee)):
+    if current.get("role", "").upper() != "ADMIN":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    result = await db.holidays.delete_one({"_id": ObjectId(holiday_id)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Holiday not found")
+    return {"message": "Holiday deleted"}
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -394,37 +437,85 @@ async def request_reset_link(req: ResetLinkRequest, database=Depends(get_db)):
     if emp.get("email", "").strip().lower() != req.email.strip().lower():
         raise HTTPException(status_code=400, detail="Email does not match our records")
         
-    # Generate unique secure token
-    token = str(uuid.uuid4())
+    # Generate 6-digit OTP
+    import random
+    otp = str(random.randint(100000, 999999))
     expiry = datetime.now(timezone.utc) + timedelta(minutes=15)
     
     await database.employees.update_one(
         {"employee_id": emp_id},
         {"$set": {
-            "reset_token": token,
+            "reset_token": otp,
             "reset_token_expiry": expiry.isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }}
     )
     
-    # In a real app, send email here. We return the token to simulate the email flow.
-    return {"message": "Verification link generated", "reset_token": token}
+    # Send actual email
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    import asyncio
+    
+    smtp_server = os.getenv("SMTP_SERVER")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_username = os.getenv("SMTP_USERNAME")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    
+    if smtp_server and smtp_username and smtp_password:
+        def send_email_sync():
+            try:
+                msg = MIMEMultipart()
+                msg["From"] = f"BMM Portal <{smtp_username}>"
+                msg["To"] = req.email.strip()
+                msg["Subject"] = "Password Reset OTP - BMM Portal"
+                
+                html = f"""
+                <html>
+                  <body>
+                    <h2>Password Reset Verification</h2>
+                    <p>Dear Employee ({emp_id}),</p>
+                    <p>We received a request to reset your password. Here is your 6-digit verification code:</p>
+                    <h1 style="background: #f4f4f4; padding: 10px; display: inline-block; letter-spacing: 5px;">{otp}</h1>
+                    <p>This code will expire in 15 minutes.</p>
+                    <p>If you did not request this, please ignore this email or contact support.</p>
+                    <br/>
+                    <p>Best regards,<br/>BMM Admin Team</p>
+                  </body>
+                </html>
+                """
+                msg.attach(MIMEText(html, "html"))
+                
+                server = smtplib.SMTP(smtp_server, smtp_port)
+                server.starttls()
+                server.login(smtp_username, smtp_password)
+                server.send_message(msg)
+                server.quit()
+            except Exception as e:
+                print(f"Failed to send email: {e}")
+                
+        # Run email sending in a background thread to not block the event loop
+        asyncio.create_task(asyncio.to_thread(send_email_sync))
+    else:
+        print(f"SMTP not configured. OTP generated for {req.email.strip()}: {otp}")
+        
+    return {"message": "OTP generated and sent to email successfully"}
 
 @app.post("/api/auth/forgot-password/verify-token")
 async def verify_reset_token(req: VerifyTokenRequest, database=Depends(get_db)):
-    # Find user by token
+    # Find user by token (which is now the OTP)
     emp = await database.employees.find_one({"reset_token": req.token})
     if not emp:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
         
     # Check expiry
     expiry_str = emp.get("reset_token_expiry")
     if not expiry_str:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
         
     expiry = datetime.fromisoformat(expiry_str)
     if datetime.now(timezone.utc) > expiry:
-        raise HTTPException(status_code=400, detail="Reset link has expired")
+        raise HTTPException(status_code=400, detail="OTP has expired")
         
     # Valid token, update password
     new_hash = hash_password(req.new_password)
@@ -500,8 +591,8 @@ async def get_all_employees(current: dict = Depends(get_current_employee)):
         raise HTTPException(status_code=403, detail="Not authorized")
     records = []
     async for emp in db.employees.find({}, {"password_hash": 0}, sort=[("full_name", 1)]):
-        emp["id"] = str(emp.pop("_id"))
-        records.append(emp)
+        cleaned_emp = await clean_emp(emp)
+        records.append(cleaned_emp)
     return records
 
 @app.put("/api/employees/{employee_id}/allow-late-signin")
@@ -551,19 +642,29 @@ async def update_employee_leaves(employee_id: str, payload: dict, current: dict 
     
     fin_year = get_current_fin_year()
     
+    # Get current balances for calculation and audit log
+    emp = await db.employees.find_one({"employee_id": employee_id})
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+        
+    months_earned = compute_months_earned_for_fy(get_current_fin_year_int(), emp.get("created_at"))
+    casual_used, sick_used = await compute_leave_usage(employee_id)
+    
     updates = {}
     if casual_leaves is not None:
+        # Calculate extra_casual needed to achieve the target casual_leaves
+        extra_casual = int(casual_leaves) - months_earned + casual_used
+        updates[f"leave_balances.{fin_year}.extra_casual"] = extra_casual
         updates[f"leave_balances.{fin_year}.casual"] = int(casual_leaves)
+        
     if sick_leaves is not None:
+        # Calculate extra_sick needed to achieve the target sick_leaves
+        extra_sick = int(sick_leaves) - months_earned + sick_used
+        updates[f"leave_balances.{fin_year}.extra_sick"] = extra_sick
         updates[f"leave_balances.{fin_year}.sick"] = int(sick_leaves)
         
     if not updates:
         raise HTTPException(status_code=400, detail="No leave updates provided")
-        
-    # Get current balances for audit log
-    emp = await db.employees.find_one({"employee_id": employee_id})
-    if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found")
         
     old_casual = emp.get("leave_balances", {}).get(fin_year, {}).get("casual", 0)
     old_sick = emp.get("leave_balances", {}).get(fin_year, {}).get("sick", 0)
@@ -600,6 +701,11 @@ async def checkin(req: CheckinRequest, current: dict = Depends(get_current_emplo
         raise HTTPException(status_code=400, detail="Today is Sunday (Holiday). Attendance cannot be marked.")
         
     today = now_ist.strftime("%Y-%m-%d")
+    
+    # Declared holiday check
+    holiday = await db.holidays.find_one({"start_date": {"$lte": today}, "end_date": {"$gte": today}})
+    if holiday:
+        raise HTTPException(status_code=400, detail=f"Today is a Holiday ({holiday['name']}). Attendance cannot be marked.")
     
     # ── Time Constraint Logic ──
     # Regular sign-in: 09:00 to 10:00
@@ -718,10 +824,7 @@ async def attendance_today(current: dict = Depends(get_current_employee)):
 @app.get("/api/attendance/history")
 async def attendance_history(current: dict = Depends(get_current_employee)):
     query = {"employee_id": current["employee_id"]}
-    if current.get("role", "").upper() != "ADMIN":
-        thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-        query["created_at"] = {"$gte": thirty_days_ago}
-        
+
     records = []
     async for r in db.attendance.find(query, sort=[("login_date", -1)]):
         r["id"] = str(r.pop("_id"))
@@ -841,6 +944,34 @@ async def update_leave_status(leave_id: str, req: LeaveStatusUpdate, current: di
                 "target_employee_id": leave["employee_id"],
                 "details": f"Approved 1 Sick leave. Earned: {months_earned}, Used after: {sick_used + 1}, Remaining: {remaining - 1}",
                 "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            
+        # Push to attendance collection
+        emp = await db.employees.find_one({"employee_id": leave["employee_id"]})
+        if emp and leave.get("leave_date"):
+            leave_date = leave["leave_date"]
+            attendance_doc = {
+                "employee_id": leave["employee_id"],
+                "employee_name": emp.get("full_name", leave["employee_id"]),
+                "role": emp.get("role", ""),
+                "login_date": leave_date,
+                "attendance_status": f"On Leave ({leave.get('leave_type')})",
+                "remarks": f"Approved {leave.get('leave_type')} leave",
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.attendance.update_one(
+                {"employee_id": leave["employee_id"], "login_date": leave_date},
+                {"$set": attendance_doc, "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}},
+                upsert=True
+            )
+            
+    if old_status == "Approved" and new_status != "Approved":
+        # Remove the attendance record if it was marked as On Leave
+        if leave.get("leave_date"):
+            await db.attendance.delete_one({
+                "employee_id": leave["employee_id"], 
+                "login_date": leave["leave_date"],
+                "attendance_status": {"$regex": "On Leave"}
             })
             
     if new_status == "Rejected":
@@ -1150,6 +1281,21 @@ async def mark_notification_read(notification_id: str, current: dict = Depends(g
         raise HTTPException(status_code=404, detail="Notification not found or already read")
     return {"message": "Marked as read"}
 
+@app.delete("/api/notifications/{notification_id}")
+async def delete_notification(notification_id: str, current: dict = Depends(get_current_employee)):
+    try:
+        obj_id = ObjectId(notification_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid notification ID")
+    
+    import re
+    result = await db.notifications.delete_one(
+        {"_id": obj_id, "employee_id": re.compile(f"^{current['employee_id']}$", re.IGNORECASE)}
+    )
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"message": "Notification deleted"}
+
 @app.put("/api/notifications/read-all")
 async def mark_all_notifications_read(current: dict = Depends(get_current_employee)):
     import re
@@ -1181,7 +1327,14 @@ async def daily_cron(database=Depends(get_db)):
 
     # For employees who didn't sign in at all yesterday, generate an Absent record (if it was a working day)
     yesterday_date_obj = datetime.strptime(yesterday, "%Y-%m-%d")
-    if yesterday_date_obj.weekday() != 6: # Skip Sundays
+    
+    # Check if yesterday was a declared holiday
+    is_holiday = False
+    holiday = await database.holidays.find_one({"start_date": {"$lte": yesterday}, "end_date": {"$gte": yesterday}})
+    if holiday:
+        is_holiday = True
+
+    if yesterday_date_obj.weekday() != 6 and not is_holiday: # Skip Sundays and Holidays
         all_emps = database.employees.find({})
         async for emp in all_emps:
             emp_id = emp["employee_id"]

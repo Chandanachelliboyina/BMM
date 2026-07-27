@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { Download, Search, FileText, FileSpreadsheet, Loader2 } from "lucide-react";
-import { apiAttendanceHistory } from "@/lib/api";
+import { apiAttendanceHistory, apiGetHolidays, type Holiday } from "@/lib/api";
 import { useEmployee } from "@/hooks/useEmployee";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
@@ -27,23 +27,73 @@ function HistoryPage() {
   const [filterMonth, setFilterMonth] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
 
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+
   useEffect(() => {
     if (!employee) return;
     (async () => {
       setFetching(true);
       try {
-        const data = await apiAttendanceHistory();
-        if (data) { setRecords(data); setFiltered(data); }
+        const [data, hols] = await Promise.all([
+          apiAttendanceHistory(),
+          apiGetHolidays()
+        ]);
+        
+        if (data) { 
+          setHolidays(hols);
+          const denseRecords = fillMissingDays(data, hols);
+          setRecords(denseRecords); 
+          setFiltered(denseRecords); 
+        }
       } catch { /* ignore */ }
       setFetching(false);
     })();
   }, [employee]);
 
+  function fillMissingDays(records: any[], hols: Holiday[]) {
+    if (!records.length) return records;
+    
+    const sortedRecords = [...records].sort((a, b) => new Date(b.login_date).getTime() - new Date(a.login_date).getTime());
+    const minDateStr = sortedRecords[sortedRecords.length - 1].login_date;
+    
+    const today = new Date();
+    const startDate = new Date(minDateStr);
+    const dense = [];
+    
+    for (let d = new Date(today); d >= startDate; d.setDate(d.getDate() - 1)) {
+       const dateStr = format(d, "yyyy-MM-dd");
+       const dayRecords = records.filter(r => r.login_date === dateStr);
+       
+       const hol = hols.find(h => dateStr >= h.start_date && dateStr <= h.end_date);
+       if (hol) {
+          dense.push({
+             id: 'hol-' + dateStr,
+             login_date: dateStr,
+             employee_name: "All Employees",
+             employee_id: "—",
+             attendance_status: `Holiday: ${hol.name}`,
+             is_dummy: true
+          });
+       } else if (d.getDay() === 0) {
+          dense.push({
+             id: 'sun-' + dateStr,
+             login_date: dateStr,
+             employee_name: "All Employees",
+             employee_id: "—",
+             attendance_status: 'Sunday',
+             is_dummy: true
+          });
+       }
+       dense.push(...dayRecords);
+    }
+    return dense;
+  }
+
   useEffect(() => {
     let result = records;
     if (search) {
       const s = search.toLowerCase();
-      result = result.filter(r => r.employee_name.toLowerCase().includes(s) || r.employee_id.toLowerCase().includes(s));
+      result = result.filter(r => r.is_dummy || r.employee_name.toLowerCase().includes(s) || r.employee_id.toLowerCase().includes(s));
     }
     if (filterMonth !== "all") {
       result = result.filter(r => {
@@ -53,9 +103,9 @@ function HistoryPage() {
     }
     if (filterStatus !== "all") {
       if (filterStatus === "present") {
-        result = result.filter(r => !!r.logout_time);
+        result = result.filter(r => r.is_dummy || !!r.logout_time);
       } else if (filterStatus === "absent") {
-        result = result.filter(r => !r.logout_time);
+        result = result.filter(r => !r.is_dummy && !r.logout_time);
       }
     }
     setFiltered(result);
@@ -180,12 +230,12 @@ function HistoryPage() {
                           <div className="font-medium">{record.employee_name}</div>
                           <div className="text-xs text-muted-foreground">{record.employee_id}</div>
                         </TableCell>
-                        <TableCell>{format(new Date(record.login_time), "hh:mm a")}</TableCell>
-                        <TableCell>{record.logout_time ? format(new Date(record.logout_time), "hh:mm a") : "—"}</TableCell>
-                        <TableCell>{hours}</TableCell>
+                        <TableCell>{record.is_dummy ? "—" : (record.login_time ? format(new Date(record.login_time), "hh:mm a") : "—")}</TableCell>
+                        <TableCell>{record.is_dummy ? "—" : (record.logout_time ? format(new Date(record.logout_time), "hh:mm a") : "—")}</TableCell>
+                        <TableCell>{record.is_dummy ? "—" : hours}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={record.logout_time ? "bg-success/10 text-success" : "bg-warning/10 text-warning-foreground"}>
-                            {record.logout_time ? "Present" : "Check-in (Absent)"}
+                          <Badge variant="outline" className={record.is_dummy ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" : (record.logout_time ? "bg-success/10 text-success" : "bg-warning/10 text-warning-foreground")}>
+                            {record.is_dummy ? record.attendance_status : (record.logout_time ? "Present" : (record.attendance_status === "Absent" ? "Absent" : "Check-in (Absent)"))}
                           </Badge>
                         </TableCell>
                         <TableCell className="max-w-[200px] truncate text-xs" title={record.logout_full_address || record.full_address || "N/A"}>

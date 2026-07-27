@@ -16,6 +16,7 @@ const items = [
   { title: "Daily Updates", url: "/updates", icon: ClipboardList },
   { title: "Activities", url: "/activities", icon: Activity },
   { title: "Leave Management", url: "/leaves", icon: CalendarDays },
+  { title: "Holidays", url: "/holidays", icon: CalendarDays },
   { title: "Notifications", url: "/notifications", icon: Bell },
   { title: "Settings", url: "/settings", icon: Settings },
 ] as const;
@@ -53,6 +54,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => {
+                if (item.title === "Attendance" && new Date().getDay() === 0) return null;
                 const active = pathname === item.url || pathname.startsWith(item.url + "/");
                 return (
                   <SidebarMenuItem key={item.title}>

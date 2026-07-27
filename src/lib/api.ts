@@ -323,9 +323,44 @@ export async function apiMarkNotificationRead(id: string): Promise<{ message: st
   });
 }
 
+export async function apiDeleteNotification(id: string): Promise<{ message: string }> {
+  return request<{ message: string }>(`/api/notifications/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export async function apiMarkAllNotificationsRead(): Promise<{ message: string }> {
   return request<{ message: string }>("/api/notifications/read-all", {
     method: "PUT",
+  });
+}
+
+// ── Holidays ──────────────────────────────────────────────────────────────────
+
+export interface Holiday {
+  id: string;
+  start_date: string;
+  end_date: string;
+  name: string;
+  remarks?: string | null;
+  created_by?: string;
+  created_at?: string;
+}
+
+export async function apiGetHolidays(): Promise<Holiday[]> {
+  return request<Holiday[]>("/api/holidays");
+}
+
+export async function apiCreateHoliday(data: { start_date: string; end_date: string; name: string; remarks?: string }): Promise<Holiday> {
+  return request<Holiday>("/api/holidays", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function apiDeleteHoliday(id: string): Promise<{ message: string }> {
+  return request<{ message: string }>(`/api/holidays/${id}`, {
+    method: "DELETE",
   });
 }
 

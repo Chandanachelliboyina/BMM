@@ -231,6 +231,21 @@ function AttendancePage() {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground">No employee profile found.</div>;
   }
 
+  if (now.getDay() === 0) {
+    return (
+      <div className="min-h-screen bg-secondary/30 flex items-center justify-center p-4 text-center">
+        <Card className="p-8 max-w-md w-full shadow-lg border-primary/20 bg-primary/5 text-primary">
+          <Building2 className="w-16 h-16 text-primary mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-2">It's Sunday!</h2>
+          <p className="opacity-90 mb-6">Attendance marking is disabled on Sundays.</p>
+          <Button className="w-full bg-gradient-primary text-primary-foreground" onClick={() => navigate({ to: "/dashboard" })}>
+            Return to Dashboard
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-secondary/30">
       <header className="h-14 border-b bg-background/80 backdrop-blur flex items-center gap-3 px-4 sticky top-0 z-30">

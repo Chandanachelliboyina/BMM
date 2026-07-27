@@ -26,7 +26,6 @@ function DashboardPage() {
     todayTime: null as string | null,
     todayLogout: null as string | null,
     status: "Absent",
-    status: "Absent",
     casualLeaveBalance: 0,
     sickLeaveBalance: 0
   });
@@ -45,13 +44,19 @@ function DashboardPage() {
       const joined = employee.joining_date ? new Date(employee.joining_date) : new Date(employee.created_at || Date.now());
       const daysSince = Math.max(1, Math.ceil((Date.now() - joined.getTime()) / (1000 * 60 * 60 * 24)));
 
+      let numSundays = 0;
+      for (let i = 0; i < daysSince; i++) {
+        const d = new Date(joined.getTime() + i * 24 * 60 * 60 * 1000);
+        if (d.getDay() === 0) numSundays++;
+      }
+
       setStats({
         totalOrgEmployees: totalEmp || 0,
         present,
-        absent: Math.max(0, daysSince - present),
+        absent: Math.max(0, daysSince - present - numSundays),
         todayTime: todayRow ? format(new Date(todayRow.login_time), "hh:mm a") : null,
         todayLogout: todayRow?.logout_time ? format(new Date(todayRow.logout_time), "hh:mm a") : null,
-        status: todayRow ? (todayRow.logout_time ? "Present" : "Check-in (Absent)") : "Absent",
+        status: new Date().getDay() === 0 ? "Sunday" : (todayRow ? (todayRow.logout_time ? "Present" : "Check-in (Absent)") : "Absent"),
         casualLeaveBalance: employee.casual_leaves ?? 0,
         sickLeaveBalance: employee.sick_leaves ?? 0
       });

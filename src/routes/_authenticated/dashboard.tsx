@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
-import { CalendarCheck, CalendarX2, Clock, TrendingUp, ClipboardList, Activity, User } from "lucide-react";
-import { apiAttendanceHistory, apiEmployeeCount, getToken, BASE_URL } from "@/lib/api";
+import { CalendarCheck, CalendarX2, Clock, TrendingUp, ClipboardList, Activity, User, CalendarDays } from "lucide-react";
+import { apiAttendanceHistory, apiEmployeeCount, getToken, BASE_URL, apiGetHolidays, type Holiday } from "@/lib/api";
 import { useEmployee } from "@/hooks/useEmployee";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
@@ -30,12 +30,16 @@ function DashboardPage() {
     sickLeaveBalance: 0
   });
   const [latestCard, setLatestCard] = useState<any>(null);
+  const [upcomingHolidays, setUpcomingHolidays] = useState<Holiday[]>([]);
 
   useEffect(() => {
     if (!employee) return;
     (async () => {
-      const data = await apiAttendanceHistory();
-      const totalEmp = await apiEmployeeCount();
+      const [data, totalEmp, hols] = await Promise.all([
+        apiAttendanceHistory(),
+        apiEmployeeCount(),
+        apiGetHolidays()
+      ]);
 
       // Only count as present if both login and logout exist
       const present = data?.filter((r) => r.login_time && r.logout_time).length ?? 0;
@@ -64,6 +68,16 @@ function DashboardPage() {
       if (data && data.length > 0) {
         const latest = data[0];
         setLatestCard({ ...latest, signedSelfie: latest.selfie_b64 ?? null });
+      }
+
+      if (hols) {
+        // Filter to only show upcoming/current holidays safely
+        const todayStr = format(new Date(), "yyyy-MM-dd");
+        const upcoming = hols
+          .filter(h => (h.end_date || h.start_date || "") >= todayStr)
+          .sort((a, b) => (a.start_date || "").localeCompare(b.start_date || ""))
+          .slice(0, 3);
+        setUpcomingHolidays(upcoming);
       }
     })();
   }, [employee]);
@@ -193,10 +207,31 @@ function DashboardPage() {
             </Card>
             <Card className="p-6 shadow-card">
               <div className="flex items-center gap-2 mb-4">
-                <Activity className="w-5 h-5 text-primary" />
-                <h3 className="font-semibold">Activity Reports</h3>
+                <CalendarDays className="w-5 h-5 text-primary" />
+                <h3 className="font-semibold">Upcoming Holidays</h3>
               </div>
-              <p className="text-sm text-muted-foreground">Weekly summaries land here.</p>
+              {upcomingHolidays.length > 0 ? (
+                <div className="space-y-4">
+                  {upcomingHolidays.map(hol => (
+                    <div key={hol.id} className="flex justify-between items-start text-sm border-b pb-3 last:border-0 last:pb-0">
+                      <div>
+                        <p className="font-medium">{hol.name || "Holiday"}</p>
+                        <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                          {hol.start_date && (
+                            <p><span className="font-medium text-foreground/70">From:</span> {format(new Date(hol.start_date), "MMM dd, yyyy")}</p>
+                          )}
+                          {hol.end_date && hol.end_date !== hol.start_date && (
+                            <p><span className="font-medium text-foreground/70">To:</span> {format(new Date(hol.end_date), "MMM dd, yyyy")}</p>
+                          )}
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="text-xs bg-primary/5">{hol.remarks || "Holiday"}</Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No upcoming holidays scheduled.</p>
+              )}
             </Card>
             <Card className="p-6 shadow-card lg:col-span-3">
               <div className="flex items-center gap-2 mb-4">

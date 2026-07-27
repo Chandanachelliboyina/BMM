@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { format } from "date-fns";
 
+import { AppShell } from "@/components/AppShell";
+
 export const Route = createFileRoute("/_authenticated/holidays")({
   head: () => ({ meta: [{ title: "Holidays — Bheemabhai Mahila Mandali (BMM)" }] }),
   component: HolidaysPage,
@@ -84,24 +86,27 @@ function HolidaysPage() {
     }
   };
 
-  const formatDateStr = (dateStr: string) => {
+  const formatDateStr = (dateStr: any) => {
     try {
-      return format(new Date(dateStr), "MMM dd, yyyy");
+      return format(new Date(dateStr), "MMM dd, yyyy (EEEE)");
     } catch {
-      return dateStr;
+      return typeof dateStr === 'string' ? dateStr : JSON.stringify(dateStr);
     }
   };
 
   if (loading) {
     return (
-      <div className="flex h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
+      <AppShell title="Holidays">
+        <div className="flex h-[50vh] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
+    <AppShell title="Holidays">
+      <div className="p-4 md:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2 text-foreground">
@@ -175,8 +180,11 @@ function HolidaysPage() {
       )}
 
       <Card className="border shadow-sm">
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
           <CardTitle className="text-lg">Declared Holidays</CardTitle>
+          <div className="text-sm text-muted-foreground font-medium">
+            Today: {format(new Date(), "MMM dd, yyyy")}
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {holidays.length === 0 ? (
@@ -189,7 +197,8 @@ function HolidaysPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 border-b">
                   <tr>
-                    <th className="px-4 py-3 text-left font-medium">Date</th>
+                    <th className="px-4 py-3 text-left font-medium">From Date</th>
+                    <th className="px-4 py-3 text-left font-medium">To Date</th>
                     <th className="px-4 py-3 text-left font-medium">Name</th>
                     <th className="px-4 py-3 text-left font-medium">Remarks</th>
                     {isAdmin && <th className="px-4 py-3 text-right font-medium">Actions</th>}
@@ -199,12 +208,13 @@ function HolidaysPage() {
                   {holidays.map((holiday) => (
                     <tr key={holiday.id} className="hover:bg-muted/20 transition-colors">
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {holiday.start_date === holiday.end_date
-                          ? formatDateStr(holiday.start_date)
-                          : `${formatDateStr(holiday.start_date)} - ${formatDateStr(holiday.end_date)}`}
+                        {holiday.start_date ? formatDateStr(holiday.start_date) : "—"}
                       </td>
-                      <td className="px-4 py-3 font-medium">{holiday.name}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{holiday.remarks || "-"}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {holiday.end_date && holiday.end_date !== holiday.start_date ? formatDateStr(holiday.end_date) : holiday.start_date ? formatDateStr(holiday.start_date) : "—"}
+                      </td>
+                      <td className="px-4 py-3 font-medium">{holiday.name || "—"}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{holiday.remarks || "—"}</td>
                       {isAdmin && (
                         <td className="px-4 py-3 text-right">
                           <Button
@@ -226,5 +236,6 @@ function HolidaysPage() {
         </CardContent>
       </Card>
     </div>
+    </AppShell>
   );
 }

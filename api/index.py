@@ -330,9 +330,20 @@ async def create_holiday(req: HolidayCreate, current: dict = Depends(get_current
 @app.get("/api/holidays")
 async def get_holidays(current: dict = Depends(get_current_employee)):
     records = []
-    async for r in db.holidays.find({}, sort=[("start_date", 1)]):
+    async for r in db.holidays.find():
         r["id"] = str(r.pop("_id"))
+        # Normalize: old records use from_date/to_date/type, new use start_date/end_date/remarks
+        if "from_date" in r and "start_date" not in r:
+            r["start_date"] = r.pop("from_date")
+        if "to_date" in r and "end_date" not in r:
+            r["end_date"] = r.pop("to_date")
+        if "type" in r and "remarks" not in r:
+            r["remarks"] = r.pop("type")
+        elif "type" in r:
+            r.pop("type", None)
         records.append(r)
+    # Sort by start_date ascending
+    records.sort(key=lambda x: x.get("start_date", ""))
     return records
 
 @app.delete("/api/holidays/{holiday_id}")

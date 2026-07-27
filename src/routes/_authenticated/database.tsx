@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Search, Loader2, Database, Pencil } from "lucide-react";
-import { apiGetEmployees, apiToggleAccess, apiUpdateLeaves, Employee, apiMe } from "@/lib/api";
+import { apiGetEmployees, apiToggleAccess, apiUpdateLeaves, Employee, apiMe, apiGetHolidays, type Holiday } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -32,6 +33,9 @@ function DatabasePage() {
   const [search, setSearch] = useState("");
   const [fetching, setFetching] = useState(true);
 
+  // Holidays state
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+
   // Dialog State
   const [editingLeaves, setEditingLeaves] = useState<Employee | null>(null);
   const [casualLeavesInput, setCasualLeavesInput] = useState("");
@@ -40,9 +44,13 @@ function DatabasePage() {
   const loadEmployees = async () => {
     setFetching(true);
     try {
-      const data = await apiGetEmployees();
-      setEmployees(data);
-      setFiltered(data);
+      const [empData, holData] = await Promise.all([
+        apiGetEmployees(),
+        apiGetHolidays()
+      ]);
+      setEmployees(empData);
+      setFiltered(empData);
+      setHolidays(holData);
     } catch (err: any) {
       toast.error(err.message || "Failed to load employees");
     } finally {
@@ -196,6 +204,64 @@ function DatabasePage() {
                     </TableCell>
                   </TableRow>
                 ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
+
+      <Card className="p-6 shadow-card mt-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <div>
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Database className="w-5 h-5 text-primary" />
+              Holiday Database
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              View all declared holidays stored in the database.
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-md border overflow-hidden">
+          <Table>
+            <TableHeader className="bg-muted/50">
+              <TableRow>
+                <TableHead>From Date</TableHead>
+                <TableHead>To Date</TableHead>
+                <TableHead>Holiday Name</TableHead>
+                <TableHead>Remarks</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {holidays.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                    No holidays found in database.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                holidays.map((hol) => {
+                  const sDate = hol.start_date || (hol as any).startDate;
+                  const eDate = hol.end_date || (hol as any).endDate;
+                  
+                  const safeFormat = (d: any) => {
+                    try { return format(new Date(d), "MMM dd, yyyy"); }
+                    catch { return typeof d === 'string' ? d : JSON.stringify(d); }
+                  };
+
+                  return (
+                  <TableRow key={hol.id}>
+                    <TableCell className="font-medium whitespace-nowrap">
+                      {sDate ? safeFormat(sDate) : "—"}
+                    </TableCell>
+                    <TableCell className="font-medium whitespace-nowrap">
+                      {eDate ? safeFormat(eDate) : "—"}
+                    </TableCell>
+                    <TableCell>{String(hol.name || (hol as any).holiday_name || "—")}</TableCell>
+                    <TableCell className="text-muted-foreground">{String(hol.remarks || "—")}</TableCell>
+                  </TableRow>
+                )})
               )}
             </TableBody>
           </Table>

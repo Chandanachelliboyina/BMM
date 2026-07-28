@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { apiLogin, setToken } from "@/lib/api";
@@ -25,6 +25,13 @@ function LoginPage() {
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedEmpId = localStorage.getItem("ngo_last_employee_id");
+      if (savedEmpId) setEmployeeId(savedEmpId);
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!employeeId.trim() || !password) {
@@ -39,7 +46,7 @@ function LoginPage() {
         localStorage.setItem("ngo_last_employee_id", employeeId.trim().toUpperCase());
       }
       toast.success("Signed in successfully");
-      navigate({ to: "/attendance", replace: true });
+      navigate({ to: "/dashboard", replace: true });
     } catch (err: any) {
       console.error(err);
       toast.error(err?.message || "Sign in failed");

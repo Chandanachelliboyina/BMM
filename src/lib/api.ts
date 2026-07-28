@@ -45,11 +45,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (res.status === 401 || res.status === 403) {
+    let detailMsg = "";
+    try {
+      const errBody = await res.json();
+      detailMsg = errBody?.detail || "";
+    } catch {}
+
     clearToken();
-    if (typeof window !== "undefined") {
-      window.location.href = "/auth/login";
-    }
-    throw new Error(res.status === 403 ? "admin not give grant access to view your dashboard" : "Session expired. Please sign in again.");
+    throw new Error(detailMsg || (res.status === 403 ? "admin not give grant access to view your dashboard" : "Session expired. Please sign in again."));
   }
 
   if (!res.ok) {
@@ -151,11 +154,19 @@ export async function apiResetPasswordWithApproval(employeeId: string, newPasswo
   });
 }
 
+import { toast } from "sonner";
+
 export async function apiMe(): Promise<Employee | null> {
   if (!getToken()) return null;
   try {
     return await request<Employee>("/api/auth/me");
-  } catch {
+  } catch (err: any) {
+    console.error("apiMe error:", err);
+    // Don't show toast for 401/403 as those are expected when session expires,
+    // but show it for 500s or network errors so the user knows the backend crashed.
+    if (!err.message?.includes("Session expired") && !err.message?.includes("grant access")) {
+      toast.error(`Dashboard failed to load: ${err.message || "Unknown error"}. Please ensure the backend is running correctly.`);
+    }
     return null;
   }
 }

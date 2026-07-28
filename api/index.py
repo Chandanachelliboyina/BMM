@@ -13,6 +13,7 @@ import jwt as pyjwt
 import base64
 import certifi
 import uuid
+import re
 from contextlib import asynccontextmanager
 
 # Load .env — works locally; on Vercel, env vars are injected by the platform
@@ -121,6 +122,8 @@ async def get_current_employee(creds: HTTPAuthorizationCredentials = Depends(bea
     except pyjwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     emp = await database.employees.find_one({"employee_id": employee_id}, {"password_hash": 0})
+    if not emp:
+        emp = await database.employees.find_one({"employee_id": re.compile(f"^{re.escape(employee_id)}$", re.IGNORECASE)}, {"password_hash": 0})
     if not emp:
         raise HTTPException(status_code=401, detail="Employee not found")
     if emp.get("has_access", True) == False:
@@ -432,13 +435,16 @@ async def login(req: LoginRequest, database=Depends(get_db)):
     emp_id = req.employee_id.strip().upper()
     emp = await database.employees.find_one({"employee_id": emp_id})
     if not emp:
+        emp = await database.employees.find_one({"employee_id": re.compile(f"^{re.escape(emp_id)}$", re.IGNORECASE)})
+    if not emp:
         raise HTTPException(status_code=401, detail="Invalid Employee ID or password")
     if emp.get("has_access", True) == False:
         raise HTTPException(status_code=403, detail="admin not give grant access to view your dashboard")
     if not verify_password(req.password, emp["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid Employee ID or password")
-    token = create_token({"sub": emp_id})
-    return {"token": token, "employee_id": emp_id}
+    real_emp_id = emp.get("employee_id", emp_id)
+    token = create_token({"sub": real_emp_id})
+    return {"token": token, "employee_id": real_emp_id}
 
 # ── Password Reset (Admin-Approval Flow) ────────────────────────────────────
 

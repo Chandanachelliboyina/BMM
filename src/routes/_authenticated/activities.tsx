@@ -987,7 +987,7 @@ function ActivitiesPage() {
                                     <SelectValue placeholder={`Select ${field.label}...`} />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {field.options?.map(opt => (
+                                    {"options" in field && (field as any).options?.map((opt: string) => (
                                       <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                                     ))}
                                   </SelectContent>

@@ -284,7 +284,7 @@ function Row({ icon: Icon, label, value }: { icon: React.ComponentType<{ classNa
   );
 }
 
-function ReadOnly({ label, value }: { label: string; value: string | null }) {
+function ReadOnly({ label, value }: { label: string; value?: string | null }) {
   return (
     <div>
       <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>

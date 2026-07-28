@@ -202,7 +202,7 @@ function ReportsPage() {
                 </div>
               ) : reports && reports.length > 0 ? (
                 <div className="space-y-4">
-                  {reports.map((report) => (
+                  {reports.map((report: any) => (
                     <div key={report.id} className="p-4 rounded-lg border bg-card text-card-foreground shadow-sm">
                       <div className="flex justify-between items-start mb-3">
                         <div>

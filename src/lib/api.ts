@@ -97,17 +97,57 @@ export async function apiRegister(payload: Record<string, unknown>): Promise<Reg
   });
 }
 
-export async function apiRequestResetLink(payload: Record<string, unknown>): Promise<{ message: string, reset_token: string }> {
-  return request<{ message: string, reset_token: string }>("/api/auth/forgot-password/request-link", {
+export async function apiRequestPasswordReset(payload: { employee_id: string; email: string }): Promise<{ message: string; request_id?: string }> {
+  return request<{ message: string; request_id?: string }>("/api/auth/forgot-password/request", {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
-export async function apiResetPasswordWithToken(payload: Record<string, unknown>): Promise<{ message: string }> {
-  return request<{ message: string }>("/api/auth/forgot-password/verify-token", {
+export interface PasswordResetRequest {
+  id: string;
+  employee_id: string;
+  full_name: string;
+  email: string;
+  status: "pending" | "approved" | "rejected" | "completed" | "cancelled";
+  created_at: string;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+}
+
+export async function apiGetPasswordResetRequests(): Promise<PasswordResetRequest[]> {
+  return request<PasswordResetRequest[]>("/api/auth/forgot-password/requests");
+}
+
+export async function apiApprovePasswordReset(requestId: string): Promise<{ message: string }> {
+  return request<{ message: string }>(`/api/auth/forgot-password/requests/${requestId}/approve`, {
+    method: "PUT",
+  });
+}
+
+export async function apiRejectPasswordReset(requestId: string): Promise<{ message: string }> {
+  return request<{ message: string }>(`/api/auth/forgot-password/requests/${requestId}/reject`, {
+    method: "PUT",
+  });
+}
+
+export async function apiSetNewPassword(newPassword: string): Promise<{ message: string }> {
+  return request<{ message: string }>("/api/auth/forgot-password/set-password", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ new_password: newPassword }),
+  });
+}
+
+export async function apiCheckPasswordResetStatus(employeeId: string): Promise<{ approved: boolean; status: string; employee_name?: string; message?: string }> {
+  return request<{ approved: boolean; status: string; employee_name?: string; message?: string }>(
+    `/api/auth/forgot-password/check-status?employee_id=${encodeURIComponent(employeeId)}`
+  );
+}
+
+export async function apiResetPasswordWithApproval(employeeId: string, newPassword: string): Promise<{ message: string }> {
+  return request<{ message: string }>("/api/auth/forgot-password/reset-with-approval", {
+    method: "POST",
+    body: JSON.stringify({ employee_id: employeeId, new_password: newPassword }),
   });
 }
 
@@ -148,6 +188,7 @@ export interface Employee {
   joining_date?: string | null;
   allow_late_signin?: boolean;
   has_access?: boolean;
+  password_reset_approved?: boolean;
   casual_leaves?: number;
   sick_leaves?: number;
   casual_earned?: number;

@@ -7,7 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { toast } from "sonner";
-import { apiMe } from "@/lib/api";
+import { apiMe, apiRequestPasswordReset } from "@/lib/api";
 import { useTheme } from "@/components/ThemeProvider";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -25,10 +25,11 @@ function SettingsPage() {
     setResetting(true);
     try {
       const emp = await apiMe();
-      if (!emp?.email) throw new Error("Could not retrieve your email");
-      toast.info(`Please contact your BMM administrator to reset the password for ${emp.email}.`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      if (!emp?.email || !emp?.employee_id) throw new Error("Could not retrieve employee details");
+      const res = await apiRequestPasswordReset({ employee_id: emp.employee_id, email: emp.email });
+      toast.success(res.message || "Password reset request submitted to Admin for approval.");
+    } catch (error: any) {
+      toast.error(error?.message || error instanceof Error ? error.message : "Failed to request password reset");
     } finally {
       setResetting(false);
     }

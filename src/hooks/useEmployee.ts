@@ -34,9 +34,23 @@ export function useEmployee() {
     setLoading(false);
   }, []);
 
+  const refreshSilent = useCallback(async () => {
+    const emp = await apiMe();
+    if (emp) {
+      setEmployee(emp);
+    }
+  }, []);
+
   useEffect(() => {
     refresh();
-  }, [refresh]);
+
+    // Poll every 5 seconds to automatically pick up admin approval
+    const timer = setInterval(() => {
+      refreshSilent();
+    }, 5000);
+
+    return () => clearInterval(timer);
+  }, [refresh, refreshSilent]);
 
   // profile photo is now a base64 data URL stored directly on the employee object
   const photoUrl = employee?.profile_photo_b64 ?? null;

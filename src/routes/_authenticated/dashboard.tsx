@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
-import { CalendarCheck, CalendarX2, Clock, TrendingUp, ClipboardList, Activity, User, CalendarDays } from "lucide-react";
-import { apiAttendanceHistory, apiEmployeeCount, getToken, BASE_URL, apiGetHolidays, type Holiday } from "@/lib/api";
+import { CalendarCheck, CalendarX2, Clock, TrendingUp, ClipboardList, Activity, User, CalendarDays, KeyRound, Eye, EyeOff, CheckCircle2, ShieldAlert } from "lucide-react";
+import { apiAttendanceHistory, apiEmployeeCount, getToken, BASE_URL, apiGetHolidays, apiSetNewPassword, type Holiday } from "@/lib/api";
 import { useEmployee } from "@/hooks/useEmployee";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/card";
@@ -18,7 +18,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 });
 
 function DashboardPage() {
-  const { employee, photoUrl, loading } = useEmployee();
+  const { employee, photoUrl, loading, refresh } = useEmployee();
   const [stats, setStats] = useState({ 
     totalOrgEmployees: 0,
     present: 0, 
@@ -31,6 +31,14 @@ function DashboardPage() {
   });
   const [latestCard, setLatestCard] = useState<any>(null);
   const [upcomingHolidays, setUpcomingHolidays] = useState<Holiday[]>([]);
+
+  // Set new password state (shown when password_reset_approved)
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwUpdated, setPwUpdated] = useState(false);
 
   useEffect(() => {
     if (!employee) return;
@@ -82,6 +90,35 @@ function DashboardPage() {
     })();
   }, [employee]);
 
+  const handleSetNewPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || !confirmPassword) {
+      toast.error("Please fill in both password fields");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    setPwLoading(true);
+    try {
+      await apiSetNewPassword(newPassword);
+      toast.success("Password updated successfully!");
+      setPwUpdated(true);
+      setNewPassword("");
+      setConfirmPassword("");
+      await refresh();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update password");
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
   return (
     <AppShell title="Dashboard">
       {loading || !employee ? (
@@ -117,6 +154,90 @@ function DashboardPage() {
               </div>
             </div>
           </Card>
+
+          {/* Set New Password Banner — only shown when admin has approved password reset */}
+          {employee.password_reset_approved && !pwUpdated && (
+            <Card className="p-6 shadow-elegant border-2 border-warning/50 bg-gradient-to-br from-warning/10 to-warning/5 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-warning/10 rounded-full -translate-y-8 translate-x-8" />
+              <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center shrink-0">
+                    <ShieldAlert className="w-5 h-5 text-warning" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base">Admin Approved — Set Your New Password</h3>
+                    <p className="text-xs text-muted-foreground">Your password reset request has been approved by Admin. Please enter your new password below to update your account credentials.</p>
+                  </div>
+                </div>
+                <form onSubmit={handleSetNewPassword} className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label htmlFor="new-pw" className="text-sm font-semibold flex items-center gap-1.5">
+                      <KeyRound className="w-3.5 h-3.5 text-primary" /> NEW PASSWORD
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="new-pw"
+                        type={showNew ? "text" : "password"}
+                        placeholder="Enter new password (min. 6 characters)"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        required
+                        minLength={6}
+                        className="w-full h-10 px-3 pr-10 rounded-md border border-input bg-background text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      />
+                      <button type="button" onClick={() => setShowNew(!showNew)} className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors bg-transparent border-none cursor-pointer p-0">
+                        {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="confirm-pw" className="text-sm font-semibold flex items-center gap-1.5">
+                      <KeyRound className="w-3.5 h-3.5 text-primary" /> CONFIRM PASSWORD
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="confirm-pw"
+                        type={showConfirm ? "text" : "password"}
+                        placeholder="Re-enter confirm password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        required
+                        minLength={6}
+                        className="w-full h-10 px-3 pr-10 rounded-md border border-input bg-background text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      />
+                      <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors bg-transparent border-none cursor-pointer p-0">
+                        {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <button
+                      type="submit"
+                      disabled={pwLoading}
+                      className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-gradient-primary text-primary-foreground text-sm font-semibold shadow-elegant hover:opacity-90 transition-opacity disabled:opacity-60 cursor-pointer border-none"
+                    >
+                      {pwLoading ? (
+                        <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Updating Password...</>
+                      ) : (
+                        <><KeyRound className="w-4 h-4" />Update Password</>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </Card>
+          )}
+
+          {/* Success state after password update */}
+          {pwUpdated && (
+            <Card className="p-5 border-2 border-success/40 bg-success/5 flex items-center gap-4">
+              <CheckCircle2 className="w-7 h-7 text-success shrink-0" />
+              <div>
+                <p className="font-semibold text-success">Password updated successfully!</p>
+                <p className="text-xs text-muted-foreground">You can now log in with your new password next time.</p>
+              </div>
+            </Card>
+          )}
 
           {/* Stats */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

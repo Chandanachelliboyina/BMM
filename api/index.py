@@ -251,12 +251,15 @@ class LoginRequest(BaseModel):
     employee_id: str
     password: str
 
-class ResetLinkRequest(BaseModel):
+class PasswordResetRequestModel(BaseModel):
     employee_id: str
     email: str
 
-class VerifyTokenRequest(BaseModel):
-    token: str
+class SetNewPasswordRequest(BaseModel):
+    new_password: str
+
+class ResetWithApprovalModel(BaseModel):
+    employee_id: str
     new_password: str
 
 class UpdateProfileRequest(BaseModel):
@@ -437,111 +440,238 @@ async def login(req: LoginRequest, database=Depends(get_db)):
     token = create_token({"sub": emp_id})
     return {"token": token, "employee_id": emp_id}
 
-@app.post("/api/auth/forgot-password/request-link")
-async def request_reset_link(req: ResetLinkRequest, database=Depends(get_db)):
+# ── Password Reset (Admin-Approval Flow) ────────────────────────────────────
+
+@app.post("/api/auth/forgot-password/request")
+async def submit_password_reset_request(req: PasswordResetRequestModel, database=Depends(get_db)):
+    """Employee submits a password reset request. Admin must approve before they can set a new password."""
     emp_id = req.employee_id.strip().upper()
     emp = await database.employees.find_one({"employee_id": emp_id})
-    
+
     if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found")
-        
+        raise HTTPException(status_code=404, detail="Employee ID not found")
+
     if emp.get("email", "").strip().lower() != req.email.strip().lower():
         raise HTTPException(status_code=400, detail="Email does not match our records")
-        
-    # Generate 6-digit OTP
-    import random
-    otp = str(random.randint(100000, 999999))
-    expiry = datetime.now(timezone.utc) + timedelta(minutes=15)
-    
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Cancel any existing pending request for this employee
+    await database.password_reset_requests.update_many(
+        {"employee_id": emp_id, "status": "pending"},
+        {"$set": {"status": "cancelled", "reviewed_at": now_iso}}
+    )
+
+    # Create new request document
+    doc = {
+        "employee_id": emp_id,
+        "full_name": emp.get("full_name", ""),
+        "email": req.email.strip().lower(),
+        "status": "pending",
+        "created_at": now_iso,
+        "reviewed_at": None,
+        "reviewed_by": None,
+    }
+    result = await database.password_reset_requests.insert_one(doc)
+
+    # Clear any existing approval flag on the employee
     await database.employees.update_one(
         {"employee_id": emp_id},
-        {"$set": {
-            "reset_token": otp,
-            "reset_token_expiry": expiry.isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
+        {"$set": {"password_reset_approved": False, "updated_at": now_iso}}
     )
-    
-    # Send actual email
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    import asyncio
-    
-    smtp_server = os.getenv("SMTP_SERVER")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_username = os.getenv("SMTP_USERNAME")
-    smtp_password = os.getenv("SMTP_PASSWORD")
-    
-    if smtp_server and smtp_username and smtp_password:
-        def send_email_sync():
-            try:
-                msg = MIMEMultipart()
-                msg["From"] = f"BMM Portal <{smtp_username}>"
-                msg["To"] = req.email.strip()
-                msg["Subject"] = "Password Reset OTP - BMM Portal"
-                
-                html = f"""
-                <html>
-                  <body>
-                    <h2>Password Reset Verification</h2>
-                    <p>Dear Employee ({emp_id}),</p>
-                    <p>We received a request to reset your password. Here is your 6-digit verification code:</p>
-                    <h1 style="background: #f4f4f4; padding: 10px; display: inline-block; letter-spacing: 5px;">{otp}</h1>
-                    <p>This code will expire in 15 minutes.</p>
-                    <p>If you did not request this, please ignore this email or contact support.</p>
-                    <br/>
-                    <p>Best regards,<br/>BMM Admin Team</p>
-                  </body>
-                </html>
-                """
-                msg.attach(MIMEText(html, "html"))
-                
-                server = smtplib.SMTP(smtp_server, smtp_port)
-                server.starttls()
-                server.login(smtp_username, smtp_password)
-                server.send_message(msg)
-                server.quit()
-            except Exception as e:
-                print(f"Failed to send email: {e}")
-                
-        # Run email sending in a background thread to not block the event loop
-        asyncio.create_task(asyncio.to_thread(send_email_sync))
-    else:
-        print(f"SMTP not configured. OTP generated for {req.email.strip()}: {otp}")
-        
-    return {"message": "OTP generated and sent to email successfully"}
 
-@app.post("/api/auth/forgot-password/verify-token")
-async def verify_reset_token(req: VerifyTokenRequest, database=Depends(get_db)):
-    # Find user by token (which is now the OTP)
-    emp = await database.employees.find_one({"reset_token": req.token})
-    if not emp:
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
-        
-    # Check expiry
-    expiry_str = emp.get("reset_token_expiry")
-    if not expiry_str:
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
-        
-    expiry = datetime.fromisoformat(expiry_str)
-    if datetime.now(timezone.utc) > expiry:
-        raise HTTPException(status_code=400, detail="OTP has expired")
-        
-    # Valid token, update password
-    new_hash = hash_password(req.new_password)
-    
+    return {"message": "Password reset request submitted. Please wait for admin approval.", "request_id": str(result.inserted_id)}
+
+
+@app.get("/api/auth/forgot-password/requests")
+async def list_password_reset_requests(current: dict = Depends(get_current_employee)):
+    """Admin only: List all pending password reset requests."""
+    if current.get("role", "").upper() != "ADMIN":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    records = []
+    async for r in db.password_reset_requests.find({"status": "pending"}, sort=[("created_at", -1)]):
+        r["id"] = str(r.pop("_id"))
+        records.append(r)
+    return records
+
+
+@app.put("/api/auth/forgot-password/requests/{request_id}/approve")
+async def approve_password_reset(request_id: str, current: dict = Depends(get_current_employee), database=Depends(get_db)):
+    """Admin only: Approve a password reset request, allowing the employee to set a new password."""
+    if current.get("role", "").upper() != "ADMIN":
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    try:
+        oid = ObjectId(request_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid request ID")
+
+    req_doc = await database.password_reset_requests.find_one({"_id": oid})
+    if not req_doc:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await database.password_reset_requests.update_one(
+        {"_id": oid},
+        {"$set": {"status": "approved", "reviewed_at": now_iso, "reviewed_by": current["employee_id"]}}
+    )
+
+    # Grant the approval flag on the employee
+    emp_id = req_doc["employee_id"]
     await database.employees.update_one(
-        {"_id": emp["_id"]},
+        {"employee_id": re.compile(f"^{re.escape(emp_id)}$", re.IGNORECASE)},
+        {"$set": {"password_reset_approved": True, "updated_at": now_iso}}
+    )
+
+    return {"message": f"Password reset approved for {emp_id}"}
+
+
+@app.put("/api/auth/forgot-password/requests/{request_id}/reject")
+async def reject_password_reset(request_id: str, current: dict = Depends(get_current_employee), database=Depends(get_db)):
+    """Admin only: Reject a password reset request."""
+    if current.get("role", "").upper() != "ADMIN":
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    try:
+        oid = ObjectId(request_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid request ID")
+
+    req_doc = await database.password_reset_requests.find_one({"_id": oid})
+    if not req_doc:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await database.password_reset_requests.update_one(
+        {"_id": oid},
+        {"$set": {"status": "rejected", "reviewed_at": now_iso, "reviewed_by": current["employee_id"]}}
+    )
+
+    # Ensure the approval flag is cleared
+    emp_id = req_doc["employee_id"]
+    await database.employees.update_one(
+        {"employee_id": re.compile(f"^{re.escape(emp_id)}$", re.IGNORECASE)},
+        {"$set": {"password_reset_approved": False, "updated_at": now_iso}}
+    )
+
+    return {"message": f"Password reset rejected for {emp_id}"}
+
+
+@app.post("/api/auth/forgot-password/set-password")
+async def set_new_password_after_approval(req: SetNewPasswordRequest, current: dict = Depends(get_current_employee), database=Depends(get_db)):
+    """Authenticated employee: Set a new password after admin has approved the reset request."""
+    if not current.get("password_reset_approved", False):
+        raise HTTPException(status_code=403, detail="Password reset not approved by admin yet")
+
+    new_hash = hash_password(req.new_password)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    await database.employees.update_one(
+        {"employee_id": current["employee_id"]},
         {
-            "$set": {"password_hash": new_hash, "updated_at": datetime.now(timezone.utc).isoformat()},
+            "$set": {
+                "password_hash": new_hash,
+                "password_reset_approved": False,
+                "updated_at": now_iso,
+            },
             "$unset": {"reset_token": "", "reset_token_expiry": ""}
         }
     )
-    return {"message": "Password successfully reset"}
+
+    # Mark all approved requests for this employee as completed
+    await database.password_reset_requests.update_many(
+        {"employee_id": current["employee_id"], "status": "approved"},
+        {"$set": {"status": "completed", "reviewed_at": now_iso}}
+    )
+
+    return {"message": "Password updated successfully"}
+
+
+@app.get("/api/auth/forgot-password/check-status")
+async def check_password_reset_status(employee_id: str, database=Depends(get_db)):
+    """Check if admin has approved password reset for a given employee_id."""
+    emp_id = employee_id.strip().upper()
+    emp = await database.employees.find_one({"employee_id": emp_id})
+    if not emp:
+        emp = await database.employees.find_one({"employee_id": re.compile(f"^{re.escape(emp_id)}$", re.IGNORECASE)})
+    
+    if not emp:
+        return {"approved": False, "status": "not_found", "message": f"Employee ID '{emp_id}' not found in database"}
+    
+    real_emp_id = emp.get("employee_id", emp_id)
+
+    if emp.get("password_reset_approved", False):
+        return {"approved": True, "status": "approved", "employee_id": real_emp_id, "employee_name": emp.get("full_name", "")}
+    
+    req_doc = await database.password_reset_requests.find_one(
+        {"employee_id": real_emp_id, "status": "approved"}
+    )
+    if req_doc:
+        return {"approved": True, "status": "approved", "employee_id": real_emp_id, "employee_name": emp.get("full_name", "")}
+    
+    pending_req = await database.password_reset_requests.find_one(
+        {"employee_id": real_emp_id, "status": "pending"}
+    )
+    if pending_req:
+        return {"approved": False, "status": "pending", "message": "Your request is still waiting for Admin approval. Admin must click Approve in the Database tab."}
+        
+    return {"approved": False, "status": "none", "message": "No active password reset request found. Please submit a request first."}
+
+
+@app.post("/api/auth/forgot-password/reset-with-approval")
+async def reset_password_with_approval(req: ResetWithApprovalModel, database=Depends(get_db)):
+    """Public endpoint: Allows an employee to set a new password if Admin has approved their reset request."""
+    emp_id = req.employee_id.strip().upper()
+    emp = await database.employees.find_one({"employee_id": emp_id})
+    if not emp:
+        emp = await database.employees.find_one({"employee_id": re.compile(f"^{re.escape(emp_id)}$", re.IGNORECASE)})
+
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    real_emp_id = emp.get("employee_id", emp_id)
+    is_approved = emp.get("password_reset_approved", False)
+    if not is_approved:
+        req_doc = await database.password_reset_requests.find_one(
+            {"employee_id": real_emp_id, "status": "approved"}
+        )
+        if req_doc:
+            is_approved = True
+
+    if not is_approved:
+        raise HTTPException(status_code=403, detail="Password reset request has not been approved by Admin yet.")
+
+    new_hash = hash_password(req.new_password)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    await database.employees.update_one(
+        {"employee_id": real_emp_id},
+        {
+            "$set": {
+                "password_hash": new_hash,
+                "password_reset_approved": False,
+                "updated_at": now_iso,
+            }
+        }
+    )
+
+    await database.password_reset_requests.update_many(
+        {"employee_id": real_emp_id, "status": {"$in": ["approved", "pending"]}},
+        {"$set": {"status": "completed", "reviewed_at": now_iso}}
+    )
+
+    return {"message": "Password updated successfully! You can now log in."}
+
 
 @app.get("/api/auth/me")
-async def me(current: dict = Depends(get_current_employee)):
+async def me(current: dict = Depends(get_current_employee), database=Depends(get_db)):
+    emp_id = current.get("employee_id", "")
+    if emp_id:
+        req_approved = await database.password_reset_requests.find_one(
+            {"employee_id": re.compile(f"^{re.escape(emp_id)}$", re.IGNORECASE), "status": "approved"}
+        )
+        if req_approved:
+            current["password_reset_approved"] = True
     return current
 
 # ── Employees ─────────────────────────────────────────────────────────────────

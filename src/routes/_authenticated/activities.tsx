@@ -200,7 +200,7 @@ function ActivitiesPage() {
   const [governanceType, setGovernanceType] = useState("");
   const [governanceOther, setGovernanceOther] = useState("");
   
-  const [complianceType, setComplianceType] = useState("");
+  const [complianceTypes, setComplianceTypes] = useState<string[]>([]);
   const [complianceOther, setComplianceOther] = useState("");
   
   const [remarks, setRemarks] = useState("");
@@ -254,7 +254,7 @@ function ActivitiesPage() {
           }).join("\n");
         }).join("\n")}` : "",
         governanceType ? `Governance\n- Activity: ${governanceType}${governanceType === "Others" ? `\n- Details: ${governanceOther || "N/A"}` : ""}` : "",
-        complianceType ? `Compliance\n- Activity: ${complianceType}${complianceType === "Others" ? `\n- Details: ${complianceOther || "N/A"}` : ""}` : "",
+        complianceTypes.length > 0 ? `Compliance\n- Activity: ${complianceTypes.join(", ")}${complianceTypes.includes("Others") ? `\n- Details: ${complianceOther || "N/A"}` : ""}` : "",
         remarks ? `General Remarks: ${remarks}` : ""
       ].filter(Boolean).join("\n\n");
 
@@ -350,7 +350,7 @@ function ActivitiesPage() {
       setSelectedOfficeTabs([]);
       setGovernanceType("");
       setGovernanceOther("");
-      setComplianceType("");
+      setComplianceTypes([]);
       setComplianceOther("");
       
       setRemarks("");
@@ -368,7 +368,7 @@ function ActivitiesPage() {
       toast.error("Please select a date.");
       return;
     }
-    const hasActivity = (awarenessHead || caseIdentified || followUp || counselling || referredType || homeVisit || fieldVisits || iecMaterial || dustBins || plantSaplings || nutritionKits || staffCapacity || staffReview || governanceType || complianceType || Object.keys(officeDocData).length > 0 || remarks || meetings);
+    const hasActivity = (awarenessHead || caseIdentified || followUp || counselling || referredType || homeVisit || fieldVisits || iecMaterial || dustBins || plantSaplings || nutritionKits || staffCapacity || staffReview || governanceType || complianceTypes.length > 0 || Object.keys(officeDocData).length > 0 || remarks || meetings);
     if (!hasActivity) {
       toast.error("Please fill in at least one activity detail before submitting.");
       return;
@@ -1112,22 +1112,38 @@ function ActivitiesPage() {
                   {activeTab === "compliance" && (
                     <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
                       <div className="space-y-3">
-                        <Label>Select Compliance Type:</Label>
+                        <div className="flex items-center justify-between">
+                          <Label>Select Compliance Type (Can select multiple):</Label>
+                          {complianceTypes.length > 0 && (
+                            <Badge variant="default">
+                              {complianceTypes.length} selected
+                            </Badge>
+                          )}
+                        </div>
                         <div className="flex flex-wrap gap-2">
-                          {["EPF", "ESI", "PT", "Gratuaty", "Insurance", "Others"].map((option) => (
-                            <Button 
-                              key={option}
-                              type="button" 
-                              variant={complianceType === option ? "default" : "secondary"}
-                              onClick={() => setComplianceType(complianceType === option ? "" : option)}
-                            >
-                              {option}
-                            </Button>
-                          ))}
+                          {["EPF", "ESI", "PT", "Gratuaty", "Insurance", "Others"].map((option) => {
+                            const isSelected = complianceTypes.includes(option);
+                            return (
+                              <Button 
+                                key={option}
+                                type="button" 
+                                variant={isSelected ? "default" : "secondary"}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setComplianceTypes(complianceTypes.filter(item => item !== option));
+                                  } else {
+                                    setComplianceTypes([...complianceTypes, option]);
+                                  }
+                                }}
+                              >
+                                {option}
+                              </Button>
+                            );
+                          })}
                         </div>
                       </div>
 
-                      {complianceType === "Others" && (
+                      {complianceTypes.includes("Others") && (
                         <div className="space-y-2 pt-4 border-t border-border mt-4 animate-in slide-in-from-top-2">
                           <Label>Description for Others</Label>
                           <Input 

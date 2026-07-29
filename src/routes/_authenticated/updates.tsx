@@ -52,8 +52,8 @@ function UpdatesPage() {
   const [viewImage, setViewImage] = useState<string | null>(null);
 
   const fetchHistory = async () => {
-    if (!employee) return;
-    setFetchingHistory(true);
+    if (!employee?.employee_id) return;
+    setFetchingHistory((prev) => (history.length === 0 ? true : prev));
     try {
       const BASE = BASE_URL;
       const token = getToken();
@@ -73,7 +73,7 @@ function UpdatesPage() {
   useEffect(() => {
     fetchHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employee]);
+  }, [employee?.employee_id]);
 
   const getLocation = async () => {
     setGettingLocation(true);

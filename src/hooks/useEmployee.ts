@@ -30,14 +30,14 @@ export function useEmployee() {
   const refresh = useCallback(async () => {
     setLoading(true);
     const emp = await apiMe();
-    setEmployee(emp);
+    setEmployee((prev) => (JSON.stringify(prev) === JSON.stringify(emp) ? prev : emp));
     setLoading(false);
   }, []);
 
   const refreshSilent = useCallback(async () => {
     const emp = await apiMe();
     if (emp) {
-      setEmployee(emp);
+      setEmployee((prev) => (JSON.stringify(prev) === JSON.stringify(emp) ? prev : emp));
     }
   }, []);
 

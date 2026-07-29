@@ -30,25 +30,29 @@ function HistoryPage() {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
 
   useEffect(() => {
-    if (!employee) return;
+    if (!employee?.employee_id) return;
+    let isMounted = true;
     (async () => {
-      setFetching(true);
+      setFetching((prev) => (records.length === 0 ? true : prev));
       try {
         const [data, hols] = await Promise.all([
           apiAttendanceHistory(),
           apiGetHolidays()
         ]);
         
-        if (data) { 
+        if (isMounted && data) { 
           setHolidays(hols);
           const denseRecords = fillMissingDays(data, hols);
           setRecords(denseRecords); 
           setFiltered(denseRecords); 
         }
       } catch { /* ignore */ }
-      setFetching(false);
+      if (isMounted) setFetching(false);
     })();
-  }, [employee]);
+    return () => {
+      isMounted = false;
+    };
+  }, [employee?.employee_id]);
 
   function fillMissingDays(records: any[], hols: Holiday[]) {
     if (!records.length) return records;

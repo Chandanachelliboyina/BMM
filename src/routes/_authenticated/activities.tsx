@@ -194,7 +194,7 @@ function ActivitiesPage() {
   const [staffCapacity, setStaffCapacity] = useState("");
   const [staffReview, setStaffReview] = useState("");
   const [staffReviewPlace, setStaffReviewPlace] = useState("");
-  const [activeOfficeTab, setActiveOfficeTab] = useState("");
+  const [selectedOfficeTabs, setSelectedOfficeTabs] = useState<string[]>([]);
   const [officeDocData, setOfficeDocData] = useState<Record<string, Record<string, string>>>({});
   
   const [governanceType, setGovernanceType] = useState("");
@@ -347,7 +347,7 @@ function ActivitiesPage() {
       setStaffReview("");
       setStaffReviewPlace("");
       setOfficeDocData({});
-      setActiveOfficeTab("");
+      setSelectedOfficeTabs([]);
       setGovernanceType("");
       setGovernanceOther("");
       setComplianceType("");
@@ -954,57 +954,121 @@ function ActivitiesPage() {
                   {activeTab === "officeDoc" && (
                     <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
                       <div className="space-y-3">
-                        <Label>Select Documentation Category:</Label>
+                        <div className="flex items-center justify-between">
+                          <Label className="font-semibold">Select Documentation Category (Select up to 5 options):</Label>
+                          <Badge variant={selectedOfficeTabs.length > 0 ? "default" : "outline"}>
+                            {selectedOfficeTabs.length} / 5 selected
+                          </Badge>
+                        </div>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                          {OFFICE_DOC_TABS.map((tab) => (
-                            <Button
-                              key={tab.id}
-                              type="button"
-                              variant={activeOfficeTab === tab.id ? "default" : "secondary"}
-                              onClick={() => setActiveOfficeTab(tab.id)}
-                              className="text-xs w-full h-full whitespace-normal min-h-[48px]"
-                            >
-                              {tab.label}
-                            </Button>
-                          ))}
+                          {OFFICE_DOC_TABS.map((tab) => {
+                            const isSelected = selectedOfficeTabs.includes(tab.id);
+                            return (
+                              <Button
+                                key={tab.id}
+                                type="button"
+                                variant={isSelected ? "default" : "secondary"}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setSelectedOfficeTabs(selectedOfficeTabs.filter(id => id !== tab.id));
+                                    const updatedData = { ...officeDocData };
+                                    delete updatedData[tab.id];
+                                    setOfficeDocData(updatedData);
+                                  } else {
+                                    if (selectedOfficeTabs.length >= 5) {
+                                      toast.error("You can select a maximum of 5 options.");
+                                      return;
+                                    }
+                                    setSelectedOfficeTabs([...selectedOfficeTabs, tab.id]);
+                                  }
+                                }}
+                                className={`text-xs w-full h-full whitespace-normal min-h-[48px] transition-all ${
+                                  isSelected ? "ring-2 ring-primary ring-offset-1 font-bold" : ""
+                                }`}
+                              >
+                                {tab.label}
+                              </Button>
+                            );
+                          })}
                         </div>
                       </div>
 
-                      {activeOfficeTab && (
-                        <div className="space-y-4 pt-4 border-t border-border mt-4 animate-in slide-in-from-top-2">
-                          {OFFICE_DOC_TABS.find(t => t.id === activeOfficeTab)?.fields.map(field => (
-                            <div key={field.name} className="space-y-2">
-                              <Label>{field.label}</Label>
-                              {field.type === "select" ? (
-                                <Select 
-                                  value={officeDocData[activeOfficeTab]?.[field.name] || ""} 
-                                  onValueChange={(val) => setOfficeDocData({
-                                    ...officeDocData,
-                                    [activeOfficeTab]: { ...(officeDocData[activeOfficeTab] || {}), [field.name]: val }
-                                  })}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder={`Select ${field.label}...`} />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {"options" in field && (field as any).options?.map((opt: string) => (
-                                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              ) : (
-                                <Input 
-                                  type={field.type}
-                                  placeholder={`Enter ${field.label}...`} 
-                                  value={officeDocData[activeOfficeTab]?.[field.name] || ""} 
-                                  onChange={(e) => setOfficeDocData({
-                                    ...officeDocData,
-                                    [activeOfficeTab]: { ...(officeDocData[activeOfficeTab] || {}), [field.name]: e.target.value }
-                                  })}
-                                />
-                              )}
-                            </div>
-                          ))}
+                      {selectedOfficeTabs.length > 0 && (
+                        <div className="space-y-6 pt-4 border-t border-border mt-4 animate-in slide-in-from-top-2">
+                          {selectedOfficeTabs.map((tabId) => {
+                            const tabDef = OFFICE_DOC_TABS.find((t) => t.id === tabId);
+                            if (!tabDef) return null;
+                            return (
+                              <Card key={tabId} className="p-4 border bg-background/50 space-y-4">
+                                <div className="flex items-center justify-between border-b pb-2">
+                                  <h4 className="font-semibold text-sm text-primary">{tabDef.label}</h4>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0 rounded-full"
+                                    onClick={() => {
+                                      setSelectedOfficeTabs(selectedOfficeTabs.filter((id) => id !== tabId));
+                                      const updatedData = { ...officeDocData };
+                                      delete updatedData[tabId];
+                                      setOfficeDocData(updatedData);
+                                    }}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                <div className="space-y-4">
+                                  {tabDef.fields.map((field) => (
+                                    <div key={field.name} className="space-y-2">
+                                      <Label className="text-xs font-medium">{field.label}</Label>
+                                      {field.type === "select" ? (
+                                        <Select
+                                          value={officeDocData[tabId]?.[field.name] || ""}
+                                          onValueChange={(val) =>
+                                            setOfficeDocData({
+                                              ...officeDocData,
+                                              [tabId]: {
+                                                ...(officeDocData[tabId] || {}),
+                                                [field.name]: val,
+                                              },
+                                            })
+                                          }
+                                        >
+                                          <SelectTrigger className="h-9 text-xs">
+                                            <SelectValue placeholder={`Select ${field.label}...`} />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {"options" in field &&
+                                              (field as any).options?.map((opt: string) => (
+                                                <SelectItem key={opt} value={opt}>
+                                                  {opt}
+                                                </SelectItem>
+                                              ))}
+                                          </SelectContent>
+                                        </Select>
+                                      ) : (
+                                        <Input
+                                          type={field.type}
+                                          placeholder={`Enter ${field.label}...`}
+                                          value={officeDocData[tabId]?.[field.name] || ""}
+                                          onChange={(e) =>
+                                            setOfficeDocData({
+                                              ...officeDocData,
+                                              [tabId]: {
+                                                ...(officeDocData[tabId] || {}),
+                                                [field.name]: e.target.value,
+                                              },
+                                            })
+                                          }
+                                          className="h-9 text-xs"
+                                        />
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </Card>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { getToken, apiMe } from "@/lib/api";
+import { EmployeeProvider } from "@/hooks/useEmployee";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -10,5 +11,9 @@ export const Route = createFileRoute("/_authenticated")({
     if (!user) throw redirect({ to: "/auth/login" });
     return { user };
   },
-  component: () => <Outlet />,
+  component: () => (
+    <EmployeeProvider>
+      <Outlet />
+    </EmployeeProvider>
+  ),
 });

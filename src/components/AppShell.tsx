@@ -1,19 +1,29 @@
-import { type ReactNode, useEffect, useState, useCallback } from "react";
+import { type ReactNode, useEffect, useState, useCallback, memo } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { useEmployee } from "@/hooks/useEmployee";
 import { format } from "date-fns";
 import { MapPin, Clock, User } from "lucide-react";
 
-export function AppShell({ title, children }: { title: string; children: ReactNode }) {
-  const { employee } = useEmployee();
+const HeaderClock = memo(function HeaderClock() {
   const [now, setNow] = useState(new Date());
-  const [locationStr, setLocationStr] = useState<string>("Fetching location...");
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  return (
+    <div className="flex items-center gap-1.5 font-mono shrink-0">
+      <Clock className="w-3.5 h-3.5 text-primary" />
+      <span className="text-foreground">{format(now, "dd MMM yyyy, hh:mm:ss a")}</span>
+    </div>
+  );
+});
+
+export function AppShell({ title, children }: { title: string; children: ReactNode }) {
+  const { employee } = useEmployee();
+  const [locationStr, setLocationStr] = useState<string>("Fetching location...");
 
   const captureLocation = useCallback(() => {
     if (!navigator.geolocation) {
@@ -31,7 +41,6 @@ export function AppShell({ title, children }: { title: string; children: ReactNo
           if (r.ok) {
             const j = await r.json();
             if (j?.results?.[0]?.formatted_address) {
-              // Just use a shorter version of the address to fit in the header
               const addressTokens = j.results[0].formatted_address.split(',');
               setLocationStr(addressTokens.slice(0, 2).join(','));
             }
@@ -74,10 +83,7 @@ export function AppShell({ title, children }: { title: string; children: ReactNo
                 <MapPin className="w-3.5 h-3.5 shrink-0" />
                 <span className="truncate max-w-[200px]" title={locationStr}>{locationStr}</span>
               </div>
-              <div className="flex items-center gap-1.5 font-mono shrink-0">
-                <Clock className="w-3.5 h-3.5 text-primary" />
-                <span className="text-foreground">{format(now, "dd MMM yyyy, hh:mm:ss a")}</span>
-              </div>
+              <HeaderClock />
             </div>
           </header>
           <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>

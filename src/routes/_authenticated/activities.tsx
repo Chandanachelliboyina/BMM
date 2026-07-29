@@ -955,10 +955,12 @@ function ActivitiesPage() {
                     <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                          <Label className="font-semibold">Select Documentation Category (Select up to 5 options):</Label>
-                          <Badge variant={selectedOfficeTabs.length > 0 ? "default" : "outline"}>
-                            {selectedOfficeTabs.length} / 5 selected
-                          </Badge>
+                          <Label className="font-semibold">Select Documentation Category (Can select multiple):</Label>
+                          {selectedOfficeTabs.length > 0 && (
+                            <Badge variant="default">
+                              {selectedOfficeTabs.length} selected
+                            </Badge>
+                          )}
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                           {OFFICE_DOC_TABS.map((tab) => {
@@ -975,10 +977,6 @@ function ActivitiesPage() {
                                     delete updatedData[tab.id];
                                     setOfficeDocData(updatedData);
                                   } else {
-                                    if (selectedOfficeTabs.length >= 5) {
-                                      toast.error("You can select a maximum of 5 options.");
-                                      return;
-                                    }
                                     setSelectedOfficeTabs([...selectedOfficeTabs, tab.id]);
                                   }
                                 }}
